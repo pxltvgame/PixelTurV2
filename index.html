@@ -1,0 +1,1119 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, minimum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>PixelTur V2</title>
+<link rel="icon" type="image/jpeg" href="placeturk-logo.jpg">
+<style>
+  html, body { margin:0; height:100%; overflow:hidden; background:#111; }
+  canvas { background:#fff; display:block; touch-action:none; transform-origin:0 0; }
+  #palette {
+    position:fixed; bottom:0; left:0; right:0;
+    background:#222; padding:8px;
+    display:flex; gap:6px; overflow-x:auto;
+    justify-content:flex-start; /* eski tarayicilar icin guvenli varsayilan */
+    justify-content:safe center; /* sigiyorsa ortala, tasarsa hicbir rengi kaybetme */
+    -webkit-overflow-scrolling:touch;
+  }
+  .color { width:24px; height:24px; border:2px solid #555; flex-shrink:0; }
+  .selected { border:2px solid gold; }
+  #topBar {
+    position:fixed; top:0; left:0; right:0; z-index:10;
+    display:flex; flex-wrap:wrap; align-items:flex-start; justify-content:space-between;
+    padding:10px; box-sizing:border-box; gap:8px;
+    pointer-events:none; /* bosluklar tuvale tiklamayi engellemesin */
+  }
+  #topBar > * { pointer-events:auto; flex-shrink:0; }
+  #cooldown {
+    background:#222; padding:6px 10px; border-radius:6px;
+    font-size:14px; font-weight:bold; color:lime; white-space:nowrap;
+  }
+  #topLeftBar {
+    display:flex; align-items:center; gap:8px; min-width:0;
+    background:#222; padding:6px 10px; border-radius:6px;
+    cursor:pointer;
+  }
+  #gameLogo { width:28px; height:28px; object-fit:contain; border-radius:5px; flex-shrink:0; }
+  #founderText { font-size:14px; font-weight:bold; color:#FFD700; white-space:nowrap; }
+  #topRightGroup { display:flex; align-items:center; gap:8px; }
+  #onlineBadge {
+    background:#222; padding:6px 10px; border-radius:6px;
+    font-size:14px; font-weight:bold; color:#7ecbff; white-space:nowrap;
+  }
+  #fitBtn {
+    background:#222; color:#fff; border:none; border-radius:6px;
+    padding:6px 12px; font-size:13px; font-weight:bold; white-space:nowrap;
+  }
+  .fitBtnFull { display:inline; }
+  .fitBtnShort { display:none; }
+  #confirmBar {
+    position:fixed; left:50%; transform:translateX(-50%);
+    background:#222; padding:10px 14px; border-radius:10px;
+    display:none; align-items:center; gap:10px; z-index:20;
+    box-shadow:0 2px 12px rgba(0,0,0,.5);
+  }
+  #confirmSwatch { width:22px; height:22px; border:2px solid #555; border-radius:4px; flex-shrink:0; }
+  #confirmBtn, #cancelBtn {
+    padding:8px 14px; border:none; border-radius:6px; font-weight:bold; font-size:14px;
+  }
+  #confirmBtn { background:#2ecc71; color:#fff; }
+  #confirmBtn:disabled { background:#666; color:#aaa; }
+  #cancelBtn { background:#555; color:#fff; }
+
+  #loadingMsg {
+    position:fixed; top:50%; left:50%; transform:translate(-50%,-50%);
+    z-index:15; background:#222; color:#fff; padding:18px 24px;
+    border-radius:10px; text-align:center; max-width:280px;
+    font-family:Arial, sans-serif; font-size:14px; line-height:1.5;
+    box-shadow:0 4px 18px rgba(0,0,0,.5);
+  }
+  #loadingMsg .spinner {
+    width:26px; height:26px; margin:0 auto 10px auto;
+    border:3px solid #444; border-top-color:#FFD700; border-radius:50%;
+    animation:spin 0.8s linear infinite;
+  }
+  @keyframes spin { to { transform:rotate(360deg); } }
+
+  .hidden { display:none !important; }
+
+  #mainMenu {
+    position:fixed; inset:0; z-index:100;
+    background:radial-gradient(circle at 50% 20%, #2a2a2a, #0d0d0d 70%);
+    display:flex; flex-direction:column; align-items:center;
+    justify-content:center; gap:16px; padding:24px; box-sizing:border-box;
+    overflow-y:auto; text-align:center; color:#fff;
+    font-family:Arial, sans-serif;
+  }
+  #menuLogo {
+    max-width:140px; max-height:140px; object-fit:contain;
+  }
+  #menuTitle { font-size:32px; font-weight:bold; margin:0; color:#FFD700; }
+  #menuSubtitle { font-size:14px; color:#aaa; margin:-8px 0 0 0; }
+  #menuOnline { font-size:13px; color:#7ecbff; margin:-6px 0 0 0; }
+  #playBtn {
+    background:#2ecc71; color:#fff; border:none; border-radius:10px;
+    padding:14px 36px; font-size:18px; font-weight:bold; cursor:pointer;
+    box-shadow:0 4px 14px rgba(46,204,113,.4);
+  }
+  #announceBtn {
+    position:fixed; top:20px; right:20px; z-index:101;
+    background:#333; color:#FFD700; border:1px solid #444; border-radius:10px;
+    padding:10px 18px; font-size:14px; font-weight:bold; cursor:pointer;
+  }
+  #announcePanel {
+    position:fixed; inset:0; z-index:110;
+    background:rgba(0,0,0,.92);
+    display:flex; align-items:center; justify-content:center;
+    padding:24px; box-sizing:border-box;
+  }
+  #announcePanelInner {
+    background:#1c1c1c; border:1px solid #333; border-radius:12px;
+    padding:22px 24px; max-width:420px; width:100%;
+    max-height:80vh; overflow-y:auto; box-sizing:border-box;
+    color:#fff; font-family:Arial, sans-serif;
+  }
+  #announcePanelInner h2 { margin:0 0 14px 0; font-size:20px; color:#FFD700; }
+  #announceList {
+    list-style:none; margin:0 0 18px 0; padding:0;
+    display:flex; flex-direction:column; gap:10px;
+  }
+  #announceList li {
+    font-size:14px; color:#ddd; border-bottom:1px solid #2a2a2a;
+    padding-bottom:8px;
+  }
+  #announceList li .announceDate {
+    display:block; font-size:12px; color:#888; margin-bottom:3px;
+  }
+  #closeAnnounceBtn {
+    background:#555; color:#fff; border:none; border-radius:8px;
+    padding:10px 20px; font-size:14px; font-weight:bold; cursor:pointer;
+  }
+
+  #authBtn {
+    position:relative;
+    background:#333; color:#90ee90; border:1px solid #444; border-radius:10px;
+    padding:10px 22px; font-size:15px; font-weight:bold; cursor:pointer;
+  }
+  #authPanel {
+    position:fixed; inset:0; z-index:110;
+    background:rgba(0,0,0,.92);
+    display:flex; align-items:center; justify-content:center;
+    padding:24px; box-sizing:border-box;
+  }
+  #authPanelInner {
+    background:#1c1c1c; border:1px solid #333; border-radius:12px;
+    padding:22px 24px; max-width:360px; width:100%;
+    box-sizing:border-box; color:#fff; font-family:Arial, sans-serif;
+  }
+  #authPanelInner h2 { margin:0 0 4px 0; font-size:20px; color:#90ee90; }
+  #authSubtitle { font-size:12px; color:#888; margin:0 0 16px 0; }
+  #authTabs { display:flex; gap:8px; margin-bottom:16px; }
+  .authTab {
+    flex:1; background:#222; color:#aaa; border:1px solid #444; border-radius:8px;
+    padding:8px; font-size:13px; font-weight:bold; cursor:pointer;
+  }
+  .authTab.active { background:#2ecc71; color:#fff; border-color:#2ecc71; }
+  #authForm input {
+    width:100%; box-sizing:border-box; padding:10px; border-radius:6px;
+    border:1px solid #444; background:#111; color:#fff; font-size:14px;
+    margin-bottom:10px;
+  }
+  #authSubmitBtn {
+    width:100%; background:#2ecc71; color:#fff; border:none; border-radius:8px;
+    padding:11px; font-size:14px; font-weight:bold; cursor:pointer; margin-top:4px;
+  }
+  #authSubmitBtn:disabled { background:#666; color:#aaa; }
+  #authMsg { font-size:12.5px; margin-top:10px; min-height:16px; }
+  #authMsg.error { color:#ff8080; }
+  #authMsg.success { color:#90ee90; }
+  #closeAuthBtn {
+    background:#555; color:#fff; border:none; border-radius:8px;
+    padding:10px 20px; font-size:14px; font-weight:bold; cursor:pointer;
+    margin-top:14px; width:100%;
+  }
+  #loggedInBar {
+    font-size:13px; color:#90ee90; margin:-4px 0 0 0;
+  }
+  #loggedInBar button {
+    background:none; border:none; color:#7ecbff; text-decoration:underline;
+    cursor:pointer; font-size:12px; margin-left:6px;
+  }
+
+  #chatBtn {
+    position:fixed; top:50%; right:20px; transform:translateY(-50%); z-index:101;
+    background:#333; color:#7ecbff; border:1px solid #444; border-radius:10px;
+    padding:10px 18px; font-size:14px; font-weight:bold; cursor:pointer;
+  }
+  #inGameChatBtn {
+    position:relative; background:#222; color:#7ecbff; border:none;
+    border-radius:6px; padding:6px 10px; font-size:15px; cursor:pointer;
+  }
+  .chatBadge {
+    position:absolute; top:-6px; right:-6px;
+    background:#ff4444; color:#fff; font-size:11px; font-weight:bold;
+    min-width:16px; height:16px; padding:0 3px; border-radius:8px;
+    display:flex; align-items:center; justify-content:center;
+    line-height:1;
+  }
+  #chatPanel {
+    position:fixed; inset:0; z-index:110;
+    background:rgba(0,0,0,.92);
+    display:flex; align-items:center; justify-content:center;
+    padding:24px; box-sizing:border-box;
+  }
+  #chatPanelInner {
+    background:#1c1c1c; border:1px solid #333; border-radius:12px;
+    padding:18px 20px; max-width:420px; width:100%;
+    box-sizing:border-box; color:#fff; font-family:Arial, sans-serif;
+    display:flex; flex-direction:column; max-height:80vh;
+  }
+  #chatPanelInner h2 { margin:0 0 10px 0; font-size:20px; color:#7ecbff; flex-shrink:0; }
+  #chatOnline { font-size:12px; color:#7ecbff; font-weight:normal; margin-left:8px; }
+  #chatMessages {
+    list-style:none; margin:0 0 10px 0; padding:0;
+    overflow-y:auto; flex:1; min-height:180px;
+    display:flex; flex-direction:column; gap:6px;
+  }
+  #chatMessages li { font-size:13px; color:#ddd; word-break:break-word; }
+  #chatMessages li .chatName { color:#FFD700; font-weight:bold; margin-right:4px; }
+  .coordLink {
+    color:#7ecbff; text-decoration:underline; font-weight:bold; cursor:pointer;
+  }
+  #coordToast {
+    position:fixed; left:50%; transform:translateX(-50%) translateY(10px);
+    background:#222; color:#fff; padding:8px 16px; border-radius:20px;
+    font-size:13px; font-family:Arial, sans-serif; z-index:200;
+    opacity:0; pointer-events:none; transition:opacity .2s, transform .2s;
+    white-space:nowrap;
+  }
+  #coordToast.show { opacity:1; transform:translateX(-50%) translateY(0); }
+  #chatMessages .chatEmpty { color:#888; text-align:center; margin-top:20px; }
+  #chatInputRow { display:flex; gap:8px; flex-shrink:0; }
+  #chatTextInput {
+    flex:1; min-width:0; padding:10px; border-radius:6px; border:1px solid #444;
+    background:#111; color:#fff; font-size:14px;
+  }
+  #chatSendBtn {
+    background:#2ecc71; color:#fff; border:none; border-radius:6px;
+    padding:10px 16px; font-weight:bold; cursor:pointer; flex-shrink:0;
+  }
+  #chatSendBtn:disabled { background:#666; color:#aaa; }
+  #closeChatBtn {
+    background:#555; color:#fff; border:none; border-radius:8px;
+    padding:10px 20px; font-size:14px; font-weight:bold; cursor:pointer;
+    margin-top:10px; align-self:flex-start; flex-shrink:0;
+  }
+
+  #chatRules {
+    position:fixed; inset:0; z-index:120;
+    background:rgba(0,0,0,.94);
+    display:flex; align-items:center; justify-content:center;
+    padding:24px; box-sizing:border-box;
+  }
+  #chatRulesInner {
+    background:#1c1c1c; border:1px solid #444; border-radius:12px;
+    padding:22px 24px; max-width:420px; width:100%;
+    max-height:85vh; overflow-y:auto; box-sizing:border-box;
+    color:#fff; font-family:Arial, sans-serif; text-align:left;
+  }
+  #chatRulesInner h2 { margin:0 0 12px 0; font-size:19px; color:#ff6b6b; }
+  #chatRulesInner ul { margin:0 0 16px 0; padding-left:20px; }
+  #chatRulesInner li { font-size:13.5px; color:#ddd; line-height:1.6; margin-bottom:6px; }
+  #chatRulesInner .warnBox {
+    background:#2a1414; border:1px solid #5a2222; border-radius:8px;
+    padding:10px 12px; font-size:12.5px; color:#ffb3b3; margin-bottom:16px;
+    line-height:1.5;
+  }
+  #chatRulesAgreeRow {
+    display:flex; align-items:flex-start; gap:8px; margin-bottom:16px;
+    font-size:13px; color:#ccc;
+  }
+  #chatRulesAgreeRow input { margin-top:3px; flex-shrink:0; }
+  #chatRulesAcceptBtn {
+    background:#2ecc71; color:#fff; border:none; border-radius:8px;
+    padding:12px 20px; font-size:14px; font-weight:bold; width:100%;
+    cursor:pointer;
+  }
+  #chatRulesAcceptBtn:disabled { background:#555; color:#999; cursor:not-allowed; }
+
+  /* Mobilde butonları büyüt */
+  @media (max-width: 768px) {
+    .color {
+      width:50px;
+      height:50px;
+      border:2px solid #555;
+    }
+    #palette {
+      gap:10px;
+      padding:12px;
+    }
+    #confirmBtn, #cancelBtn {
+      padding:12px 18px; font-size:16px;
+    }
+    #confirmSwatch { width:28px; height:28px; }
+    #fitBtn { padding:8px 12px; font-size:13px; }
+    #topLeftBar { padding:5px 8px; gap:6px; }
+    #gameLogo { width:22px; height:22px; }
+    #founderText { font-size:12px; }
+    #cooldown { padding:5px 8px; font-size:13px; }
+    .fitBtnFull { display:none; }
+    .fitBtnShort { display:inline; }
+    #menuLogo { max-width:100px; max-height:100px; }
+    #menuTitle { font-size:26px; }
+    #playBtn { width:100%; max-width:320px; padding:16px; font-size:20px; }
+    #announceBtn { top:14px; right:14px; padding:8px 12px; font-size:12.5px; }
+    #announcePanelInner { max-width:100%; }
+    #chatBtn { right:14px; padding:8px 12px; font-size:12.5px; }
+    #chatPanelInner { max-width:100%; }
+    #authBtn { width:100%; max-width:320px; padding:12px; font-size:16px; }
+    #authPanelInner { max-width:100%; }
+  }
+</style>
+</head>
+<body>
+
+<canvas id="board"></canvas>
+<div id="loadingMsg" class="hidden">
+  <div class="spinner"></div>
+  Tahta yükleniyor...<br>
+  <span style="color:#aaa;font-size:12px;">Sunucu uyuyor olabilir, bu 30-60 saniye sürebilir.</span>
+</div>
+<div id="topBar" class="hud hidden">
+  <div id="topLeftBar">
+    <img id="gameLogo" src="placeturk-logo.jpg" alt="PixelTur V2">
+    <span id="founderText">PixelTur V2</span>
+  </div>
+  <button id="fitBtn">
+    <span class="fitBtnFull">Tahtaya Sığdır</span>
+    <span class="fitBtnShort">Sığdır</span>
+  </button>
+  <div id="topRightGroup">
+    <button id="inGameChatBtn">💬<span class="chatBadge hidden"></span></button>
+    <div id="onlineBadge">🟢 -</div>
+    <div id="cooldown">Hazır!</div>
+  </div>
+</div>
+<div id="palette" class="hud hidden"></div>
+<div id="confirmBar">
+  <div id="confirmSwatch"></div>
+  <button id="confirmBtn">Yerleştir</button>
+  <button id="cancelBtn">Vazgeç</button>
+</div>
+
+<div id="mainMenu">
+  <!-- Logo dosyası placeturk-logo.jpg olarak proje klasöründe duruyor. -->
+  <img id="menuLogo" src="placeturk-logo.jpg" alt="PixelTur V2 logo" onerror="this.style.display='none'">
+  <h1 id="menuTitle">PixelTur V2</h1>
+  <p id="menuSubtitle">Türkiye'nin r/place tarzı ortak piksel tahtası</p>
+  <p id="menuOnline">🟢 - kişi çevrimiçi</p>
+  <p id="loggedInBar" class="hidden"></p>
+  <button id="authBtn">👤 Giriş Yap / Kayıt Ol</button>
+  <button id="announceBtn">📢 Duyurular</button>
+  <button id="chatBtn">💬 Sohbet<span class="chatBadge hidden"></span></button>
+  <button id="playBtn">Oyuna Başla</button>
+</div>
+
+<div id="authPanel" class="hidden">
+  <div id="authPanelInner">
+    <h2>👤 Hesap</h2>
+    <p id="authSubtitle">Kayıt olman zorunlu değil, ama ismini kimsenin çalamamasını istersen önerilir.</p>
+    <div id="authTabs">
+      <button type="button" class="authTab active" data-mode="login">Giriş Yap</button>
+      <button type="button" class="authTab" data-mode="register">Kayıt Ol</button>
+    </div>
+    <form id="authForm">
+      <input id="authUsername" type="text" maxlength="20" placeholder="Kullanıcı adı" autocomplete="username" required>
+      <input id="authPassword" type="password" maxlength="72" placeholder="Şifre (en az 6 karakter)" autocomplete="current-password" required>
+      <button type="submit" id="authSubmitBtn">Giriş Yap</button>
+    </form>
+    <div id="authMsg"></div>
+    <button id="closeAuthBtn">Kapat</button>
+  </div>
+</div>
+
+<div id="announcePanel" class="hidden">
+  <div id="announcePanelInner">
+    <h2>📢 Duyurular</h2>
+    <ul id="announceList"></ul>
+    <button id="closeAnnounceBtn">Kapat</button>
+  </div>
+</div>
+
+<div id="chatPanel" class="hidden">
+  <div id="chatPanelInner">
+    <h2>💬 Sohbet <span id="chatOnline"></span></h2>
+    <ul id="chatMessages"><li class="chatEmpty">Henüz mesaj yok, ilk yazan sen ol!</li></ul>
+    <div id="chatInputRow">
+      <input id="chatTextInput" type="text" maxlength="200" placeholder="Bir şeyler yaz...">
+      <button id="chatSendBtn">Gönder</button>
+    </div>
+    <button id="closeChatBtn">Kapat</button>
+  </div>
+</div>
+
+<div id="chatRules" class="hidden">
+  <div id="chatRulesInner">
+    <h2>⚠️ Sohbet Kuralları</h2>
+    <ul>
+      <li>Kendine veya başkalarına ait telefon numarası, adres, şifre gibi <strong>özel/kişisel bilgi paylaşma.</strong></li>
+      <li>Hakaret, küfür, taciz, nefret söylemi ve yasa dışı içerik <strong>yasaktır.</strong></li>
+      <li>Bu sohbet anlık ve otomatik denetimsizdir; yazdığın her şeyden <strong>tamamen sen sorumlusun.</strong></li>
+      <li>Reklam, spam ve kötüye kullanım tespit edilirse erişimin kısıtlanabilir.</li>
+    </ul>
+    <div class="warnBox">
+      PixelTur V2 yapımcıları/geliştiricileri, kullanıcılar tarafından sohbete yazılan hiçbir içerikten sorumlu değildir. Sohbette karşılaştığın olumsuz bir içerik varsa bu tamamen o içeriği yazan kullanıcıya aittir.
+    </div>
+    <label id="chatRulesAgreeRow">
+      <input type="checkbox" id="chatRulesCheckbox">
+      Yukarıdaki kuralları okudum ve kabul ediyorum.
+    </label>
+    <button id="chatRulesAcceptBtn" disabled>Kabul Ediyorum, Sohbete Gir</button>
+  </div>
+</div>
+
+<script>
+const canvas=document.getElementById("board");
+const ctx=canvas.getContext("2d");
+
+const gridSize=200, cellSize=5;
+canvas.width=gridSize*cellSize;
+canvas.height=gridSize*cellSize;
+
+/* Palet – beyazı 2. sıraya ekledik */
+const colors=["#FF0000","#FFFFFF","#00FF00","#0000FF","#FFFF00","#FF00FF","#00FFFF",
+"#000000","#FFA500","#800080","#008000","#808080","#A52A2A","#ADD8E6","#FFC0CB","#FFD700"];
+let currentColor=colors[0];
+const palette=document.getElementById("palette");
+colors.forEach(c=>{
+  const div=document.createElement("div");
+  div.className="color"; div.style.background=c;
+  div.onclick=()=>{
+    document.querySelectorAll(".color").forEach(x=>x.classList.remove("selected"));
+    div.classList.add("selected"); currentColor=c;
+    if(typeof confirmSwatch!=="undefined" && selected) confirmSwatch.style.background=currentColor;
+  };
+  palette.appendChild(div);
+});
+palette.firstChild.classList.add("selected");
+
+/* Cooldown */
+let canPlace=true; let cooldownTime=10;
+const cooldownDiv=document.getElementById("cooldown");
+
+/* Ses + titreşim: tarayıcılar AudioContext'i ancak bir kullanıcı
+   etkileşiminden sonra çalıştırmaya izin veriyor, o yüzden ilk
+   dokunuşta/tıklamada sessizce hazırlıyoruz. */
+let audioCtx=null;
+function unlockAudio(){
+  if(!audioCtx){
+    try{ audioCtx = new (window.AudioContext||window.webkitAudioContext)(); }catch(e){}
+  }
+  document.removeEventListener("pointerdown", unlockAudio);
+}
+document.addEventListener("pointerdown", unlockAudio);
+
+function notifyCooldownReady(){
+  if(navigator.vibrate) navigator.vibrate(150);
+  if(audioCtx){
+    try{
+      const osc=audioCtx.createOscillator();
+      const gain=audioCtx.createGain();
+      osc.type="sine"; osc.frequency.value=880;
+      gain.gain.setValueAtTime(0.15, audioCtx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime+0.25);
+      osc.connect(gain); gain.connect(audioCtx.destination);
+      osc.start(); osc.stop(audioCtx.currentTime+0.25);
+    }catch(e){}
+  }
+}
+
+function startCooldown(){
+  canPlace=false; let t=cooldownTime;
+  if(confirmBtn) confirmBtn.disabled=true;
+  const timer=setInterval(()=>{
+    t--; if(t<=0){clearInterval(timer); canPlace=true;
+      cooldownDiv.textContent="Hazır!"; cooldownDiv.style.color="lime";
+      if(confirmBtn) confirmBtn.disabled=false;
+      notifyCooldownReady();}
+    else{cooldownDiv.textContent = t<60 ? `${t}s` : `${Math.floor(t/60)}:${String(t%60).padStart(2,"0")}`;
+      cooldownDiv.style.color="#ff4444";}
+  },1000);
+}
+
+/* --- Ana Menü: Duyurular ---
+   Yeni bir duyuru eklemek istediğinde bu listeye (en üste) yeni bir
+   {date:"...", text:"..."} satırı eklemen yeterli, başka bir şeye
+   dokunmana gerek yok. */
+const announcements = [
+  { date: "09.09.2026", text: "Oyuna girdiğinizde tuval boş görünüyorsa panik yapmayın — sunucumuz ücretsiz olduğu için biraz kullanılmadığında uyuyor ve uyanması 30 saniye ile 1 dakika arasında sürebiliyor. Bu sürede lütfen bekleyin, tahtanız otomatik olarak yüklenecektir. Yaşanan aksaklıklardan dolayı özür diliyoruz, iyi eğlenceler dileriz!" },
+  { date: "09.09.2026", text: "PixelTur V2 yeniden açıldı! Artık verileriniz kalıcı olarak saklanıyor." }
+];
+
+function renderAnnouncements(){
+  const list = document.getElementById("announceList");
+  if(!list) return;
+  if(announcements.length===0){
+    list.innerHTML = "<li>Şu an aktif bir duyuru yok.</li>";
+    return;
+  }
+  list.innerHTML = announcements.map(a=>
+    `<li><span class="announceDate">${a.date}</span>${a.text}</li>`
+  ).join("");
+}
+renderAnnouncements();
+
+/* Ana menü: "Oyuna Başla" tuvali ve HUD'u (palet, cooldown, vb.) açar. */
+const mainMenu = document.getElementById("mainMenu");
+const loadingMsg = document.getElementById("loadingMsg");
+document.getElementById("playBtn").addEventListener("click", ()=>{
+  mainMenu.classList.add("hidden");
+  document.querySelectorAll(".hud").forEach(el=>el.classList.remove("hidden"));
+  fitToScreen(); // palet artik gorunur oldugu icin yuksekligi yeniden hesapla
+  if(!boardLoaded) loadingMsg.classList.remove("hidden");
+});
+
+/* Oyun icindeki kose logosuna basinca ana menuye geri don */
+document.getElementById("topLeftBar").addEventListener("click", ()=>{
+  document.querySelectorAll(".hud").forEach(el=>el.classList.add("hidden"));
+  loadingMsg.classList.add("hidden");
+  if(typeof clearSelection==="function") clearSelection();
+  mainMenu.classList.remove("hidden");
+});
+
+/* Duyurular: ayrı, kara bir sekme/panel olarak açılıp kapanıyor */
+const announcePanel = document.getElementById("announcePanel");
+document.getElementById("announceBtn").addEventListener("click", ()=>{
+  renderAnnouncements();
+  chatPanel.classList.add("hidden");
+  announcePanel.classList.remove("hidden");
+});
+document.getElementById("closeAnnounceBtn").addEventListener("click", ()=>{
+  announcePanel.classList.add("hidden");
+});
+
+/* --- Sohbet ---
+   Mesajlar sunucuda sadece bellekte tutuluyor (son 50 mesaj), kalıcı
+   değil - sunucu yeniden başlarsa geçmiş sıfırlanır. Artık sohbete
+   girebilmek icin giris yapmis olmak ZORUNLU - isim artik her zaman
+   hesap adi, serbest bir takma ad yazilamiyor. */
+const chatPanel = document.getElementById("chatPanel");
+const chatMessages = document.getElementById("chatMessages");
+const chatTextInput = document.getElementById("chatTextInput");
+const chatSendBtn = document.getElementById("chatSendBtn");
+let chatCooldown = false;
+
+document.getElementById("chatBtn").addEventListener("click", openChatPanel);
+document.getElementById("inGameChatBtn").addEventListener("click", openChatPanel);
+document.getElementById("closeChatBtn").addEventListener("click", ()=>{
+  chatPanel.classList.add("hidden");
+});
+
+function openChatPanel(){
+  announcePanel.classList.add("hidden");
+  if(!loggedInUsername){
+    // Giris yapilmamissa sohbet yerine hesap panelini ac, neden oldugunu soyle
+    authMsg.textContent = "Sohbete girebilmek için önce giriş yapmalısın ya da kayıt olmalısın.";
+    authMsg.className = "error";
+    authPanel.classList.remove("hidden");
+    return;
+  }
+  if(localStorage.getItem("placeturk_chat_rules_accepted")==="1"){
+    chatPanel.classList.remove("hidden");
+    chatMessages.scrollTop = chatMessages.scrollHeight;
+  } else {
+    chatRules.classList.remove("hidden");
+  }
+  unreadChat = 0;
+  updateChatBadge();
+}
+
+/* Sohbet kuralları: kabul edilmeden sohbet paneli açılmıyor.
+   Onay tarayıcıda hatırlanıyor, bir daha her seferinde sormuyoruz. */
+const chatRules = document.getElementById("chatRules");
+const chatRulesCheckbox = document.getElementById("chatRulesCheckbox");
+const chatRulesAcceptBtn = document.getElementById("chatRulesAcceptBtn");
+chatRulesCheckbox.addEventListener("change", ()=>{
+  chatRulesAcceptBtn.disabled = !chatRulesCheckbox.checked;
+});
+chatRulesAcceptBtn.addEventListener("click", ()=>{
+  if(!chatRulesCheckbox.checked) return;
+  localStorage.setItem("placeturk_chat_rules_accepted", "1");
+  chatRules.classList.add("hidden");
+  chatPanel.classList.remove("hidden");
+  chatMessages.scrollTop = chatMessages.scrollHeight;
+  unreadChat = 0;
+  updateChatBadge();
+});
+
+/* Okunmamış mesaj rozeti: oyun içindeyken sohbet kapalıyken gelen her
+   mesaj için sayaç artıyor, hem ana menüdeki hem oyun içindeki
+   ikonda küçük kırmızı bir rozet olarak gösteriliyor. */
+let unreadChat = 0;
+function updateChatBadge(){
+  document.querySelectorAll(".chatBadge").forEach(b=>{
+    if(unreadChat>0){ b.textContent = unreadChat>9?"9+":unreadChat; b.classList.remove("hidden"); }
+    else b.classList.add("hidden");
+  });
+}
+
+/* Mesaj icinde "📍123,45" gecen yerleri tiklanabilir koordinat linkine
+   cevirir - tiklaninca tahtada o noktaya goturur (asagida jumpToCoord). */
+const COORD_REGEX = /📍(\d{1,3}),(\d{1,3})/g;
+function renderMessageText(container, text){
+  let lastIndex = 0, match;
+  COORD_REGEX.lastIndex = 0;
+  while((match = COORD_REGEX.exec(text))){
+    if(match.index > lastIndex) container.appendChild(document.createTextNode(text.slice(lastIndex, match.index)));
+    const gx = parseInt(match[1],10), gy = parseInt(match[2],10);
+    const link = document.createElement("span");
+    link.className = "coordLink";
+    link.textContent = match[0];
+    link.addEventListener("click", (ev)=>{ ev.stopPropagation(); jumpToCoord(gx,gy); });
+    container.appendChild(link);
+    lastIndex = COORD_REGEX.lastIndex;
+  }
+  if(lastIndex < text.length) container.appendChild(document.createTextNode(text.slice(lastIndex)));
+}
+
+function addChatMessage(msg){
+  const emptyMsg = chatMessages.querySelector(".chatEmpty");
+  if(emptyMsg) emptyMsg.remove();
+  const li = document.createElement("li");
+  if(msg.id!==undefined) li.dataset.id = msg.id;
+  const nameSpan = document.createElement("span");
+  nameSpan.className = "chatName";
+  nameSpan.textContent = (msg.name || "Misafir") + ":";
+  li.appendChild(nameSpan);
+  renderMessageText(li, " " + msg.text);
+  chatMessages.appendChild(li);
+  // cok fazla biriktirmesin diye eski mesajlari DOM'dan da sil
+  while(chatMessages.children.length > 100) chatMessages.removeChild(chatMessages.firstChild);
+  chatMessages.scrollTop = chatMessages.scrollHeight;
+}
+
+/* Sunucu spam tespit edip bir mesaji sildiginde, o mesaji herkesin
+   ekranindan da kaldirir (tamamen yok etmek yerine "kaldirildi" izi
+   birakiyoruz, boylece "mesajim aniden kayboldu" kafa karisikligi olmaz). */
+function removeChatMessage(id){
+  const li = chatMessages.querySelector(`li[data-id="${id}"]`);
+  if(!li) return;
+  li.innerHTML = "";
+  li.style.color = "#777";
+  li.style.fontStyle = "italic";
+  li.textContent = "Bu mesaj spam nedeniyle kaldırıldı.";
+}
+
+function clearChat(){
+  chatMessages.innerHTML = '<li class="chatEmpty">Henüz mesaj yok, ilk yazan sen ol!</li>';
+}
+
+/* Sunucu bir mesaji kufur/argo filtresi yuzunden reddettiginde kisa
+   sureli bir uyari gosterir. */
+function showChatBlockedNotice(reason){
+  const li = document.createElement("li");
+  li.style.color = "#ff8080";
+  li.style.fontStyle = "italic";
+  li.textContent = "⚠️ " + (reason || "Mesajın gönderilemedi.");
+  chatMessages.appendChild(li);
+  chatMessages.scrollTop = chatMessages.scrollHeight;
+  setTimeout(()=>{ li.remove(); }, 4000);
+}
+
+function sendChat(){
+  const text = chatTextInput.value.trim();
+  if(!text || chatCooldown) return;
+  if(!(socket && socket.readyState===WebSocket.OPEN)) return;
+  if(!loggedInUsername){
+    openChatPanel(); // oturum dusmus olabilir, hesap paneline yonlendir
+    return;
+  }
+  socket.send(JSON.stringify({type:"chat", text:text.slice(0,200)}));
+  chatTextInput.value = "";
+  chatCooldown = true;
+  chatSendBtn.disabled = true;
+  setTimeout(()=>{ chatCooldown=false; chatSendBtn.disabled=false; }, 2000);
+}
+chatSendBtn.addEventListener("click", sendChat);
+chatTextInput.addEventListener("keydown", e=>{ if(e.key==="Enter") sendChat(); });
+
+/* Çevrimiçi sayacı: oyun içi rozet, ana menü ve sohbet başlığı hepsi
+   ayni anda güncelleniyor. */
+const onlineBadge=document.getElementById("onlineBadge");
+const menuOnline=document.getElementById("menuOnline");
+const chatOnline=document.getElementById("chatOnline");
+function updateOnlineCount(count){
+  onlineBadge.textContent = `🟢 ${count}`;
+  menuOnline.textContent = `🟢 ${count} kişi çevrimiçi`;
+  chatOnline.textContent = `(${count} çevrimiçi)`;
+}
+
+/* --- Hesap (giriş/kayıt) - test sürümü ---
+   Kayıt tamamen opsiyonel; kayıt olmadan da oynanıp sohbet edilebiliyor.
+   Kayıtlı bir kullanıcı adını sunucu doğruladığı için, giriş yaptığında
+   o ismi başka kimse (kayıtlı olmayan biri) kullanamıyor/taklit edemiyor -
+   sunucu mesajdaki ismi değil, hesabın gerçek adını kullanıyor. */
+// NOT: localStorage sadece kullanici adini HATIRLATMAK icin kullaniliyor.
+// Gercek "giris yapilmis" durumu her zaman sunucu tarafinda (ws.username)
+// ve bu degiskende tutuluyor; sayfa her acildiginda sifirlaniyor, cunku
+// yeni baglanti sunucu icin "giris yapilmamis" demektir - kalici oturum
+// (token) sistemi yok, her sayfa yuklemesinde tekrar giris gerekiyor.
+let loggedInUsername = null;
+let authMode = "login";
+
+const authPanel = document.getElementById("authPanel");
+const authBtn = document.getElementById("authBtn");
+const authForm = document.getElementById("authForm");
+const authUsername = document.getElementById("authUsername");
+const authPassword = document.getElementById("authPassword");
+const authSubmitBtn = document.getElementById("authSubmitBtn");
+const authMsg = document.getElementById("authMsg");
+const loggedInBar = document.getElementById("loggedInBar");
+
+function setAuthMode(mode){
+  authMode = mode;
+  document.querySelectorAll(".authTab").forEach(t=>t.classList.toggle("active", t.dataset.mode===mode));
+  authSubmitBtn.textContent = mode==="login" ? "Giriş Yap" : "Kayıt Ol";
+  authPassword.autocomplete = mode==="login" ? "current-password" : "new-password";
+  authMsg.textContent = ""; authMsg.className = "";
+}
+document.querySelectorAll(".authTab").forEach(tab=>{
+  tab.addEventListener("click", ()=>setAuthMode(tab.dataset.mode));
+});
+
+function updateLoggedInUI(){
+  if(loggedInUsername){
+    loggedInBar.classList.remove("hidden");
+    loggedInBar.innerHTML = `Giriş yaptın: <strong>${loggedInUsername}</strong>`;
+    const logoutBtn=document.createElement("button");
+    logoutBtn.type="button"; logoutBtn.textContent="(Çıkış Yap)";
+    logoutBtn.addEventListener("click", logout);
+    loggedInBar.appendChild(logoutBtn);
+    authBtn.textContent = "👤 Hesabım";
+  } else {
+    loggedInBar.classList.add("hidden");
+    authBtn.textContent = "👤 Giriş Yap / Kayıt Ol";
+  }
+}
+
+function logout(){
+  if(socket && socket.readyState===WebSocket.OPEN) socket.send(JSON.stringify({type:"logout"}));
+  loggedInUsername = null;
+  localStorage.removeItem("placeturk_logged_in_as");
+  updateLoggedInUI();
+}
+
+authBtn.addEventListener("click", ()=>{
+  authMsg.textContent=""; authMsg.className="";
+  authUsername.value = loggedInUsername || localStorage.getItem("placeturk_logged_in_as") || "";
+  authPanel.classList.remove("hidden");
+});
+document.getElementById("closeAuthBtn").addEventListener("click", ()=>{
+  authPanel.classList.add("hidden");
+});
+
+let authSubmitting = false;
+let authTimeoutTimer = null;
+authForm.addEventListener("submit", e=>{
+  e.preventDefault();
+  if(authSubmitting) return;
+  if(!(socket && socket.readyState===WebSocket.OPEN)){
+    authMsg.textContent = "Sunucuya bağlanılamadı, biraz sonra tekrar dene.";
+    authMsg.className = "error";
+    return;
+  }
+  const username = authUsername.value.trim();
+  const password = authPassword.value;
+  authSubmitting = true;
+  authSubmitBtn.disabled = true;
+  authMsg.textContent = "Gönderiliyor..."; authMsg.className = "";
+  socket.send(JSON.stringify({ type: authMode, username, password }));
+  // Sunucu (ornegin backend henuz guncel kod ile yeniden baslatilmadiysa)
+  // hic yanit vermeyebilir - bu durumda sonsuza kadar "Gonderiliyor..."
+  // yazip kalmak yerine net bir hata gosterelim.
+  clearTimeout(authTimeoutTimer);
+  authTimeoutTimer = setTimeout(()=>{
+    if(!authSubmitting) return;
+    authSubmitting = false;
+    authSubmitBtn.disabled = false;
+    authMsg.textContent = "Sunucudan yanıt gelmedi. Backend'in (server.js) güncel sürümle yeniden yüklendiğinden emin ol.";
+    authMsg.className = "error";
+  }, 7000);
+});
+
+function handleAuthOk(data){
+  clearTimeout(authTimeoutTimer);
+  authSubmitting = false;
+  authSubmitBtn.disabled = false;
+  loggedInUsername = data.username;
+  localStorage.setItem("placeturk_logged_in_as", loggedInUsername);
+  authMsg.textContent = authMode==="login" ? "Giriş başarılı!" : "Kayıt başarılı, giriş yapıldı!";
+  authMsg.className = "success";
+  updateLoggedInUI();
+  setTimeout(()=>{ authPanel.classList.add("hidden"); }, 900);
+}
+function handleAuthError(data){
+  clearTimeout(authTimeoutTimer);
+  authSubmitting = false;
+  authSubmitBtn.disabled = false;
+  authMsg.textContent = data.reason || "Bir hata oluştu.";
+  authMsg.className = "error";
+}
+
+updateLoggedInUI();
+
+/* WebSocket */
+// Backend'i yeniden dagittiginda (orn. Render, Fly.io, Railway) SADECE
+// bu satiri yeni adresle degistirmen yeterli. wss:// (https) kullan,
+// ws:// (http) sadece yerel test icin.
+const BACKEND_WS_URL = "wss://placeturk-v2.onrender.com";
+let boardMap=new Map(); // "x,y" -> renk. Yerlestirilen her piksel buraya da yazilmali,
+                         // yoksa herhangi bir drawBoard() cagrisinda (orn. baska bir
+                         // hucre secince) o piksel "hafizada yok" sayilip siliniyordu.
+let boardLoaded=false;
+let socket;
+
+function connect(){
+  socket=new WebSocket(BACKEND_WS_URL);
+  socket.onmessage=e=>{
+    const data=JSON.parse(e.data);
+    if(data.type==="init"){
+      boardMap=new Map(data.board.map(p=>[p.x+","+p.y, p.color]));
+      drawBoard();
+      boardLoaded=true; loadingMsg.classList.add("hidden");
+      if(Array.isArray(data.chat)) data.chat.forEach(addChatMessage);
+      if(typeof data.online==="number") updateOnlineCount(data.online);
+    }
+    if(data.type==="update"){ applyPixel(data.x,data.y,data.color); }
+    if(data.type==="chat"){
+      addChatMessage(data);
+      if(chatPanel.classList.contains("hidden")){ unreadChat++; updateChatBadge(); }
+    }
+    if(data.type==="chat_delete"){ removeChatMessage(data.id); }
+    if(data.type==="chat_clear"){ clearChat(); }
+    if(data.type==="chat_blocked"){ showChatBlockedNotice(data.reason); }
+    if(data.type==="online"){ updateOnlineCount(data.count); }
+    if(data.type==="auth_ok"){ handleAuthOk(data); }
+    if(data.type==="auth_error"){ handleAuthError(data); }
+  };
+  // Ucretsiz sunucular hareketsizlikte uyuyabilir; baglanti koparsa
+  // birkac saniye sonra otomatik yeniden baglanmayi dene.
+  socket.onclose=()=>{ setTimeout(connect,3000); };
+  socket.onerror=()=>{ socket.close(); };
+}
+connect();
+
+/* Çizim */
+function drawBoard(){
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+  boardMap.forEach((color,key)=>{
+    const [x,y]=key.split(",").map(Number);
+    ctx.fillStyle=color;
+    ctx.fillRect(x*cellSize,y*cellSize,cellSize,cellSize);
+  });
+}
+/* Yeni/degisen bir pikseli hem hafizadaki tahtaya (boardMap) hem ekrana yazar. */
+function applyPixel(x,y,color){
+  boardMap.set(x+","+y, color);
+  ctx.fillStyle=color;
+  ctx.fillRect(x*cellSize,y*cellSize,cellSize,cellSize);
+}
+
+/* Zoom + Pan state
+   Not: eski koddaki tıklama hesaplaması, offsetX/offsetY'yi hem
+   getBoundingClientRect() üzerinden (dolaylı) hem de elle bir daha
+   çıkararak iki kez hesaba katıyordu. Bu yüzden ekranı biraz kaydırdığın
+   anda tıkladığın yer ile boyanan piksel birbirini tutmuyordu - "pixel
+   atmak zor" şikayetinin asıl sebebi buydu. Aşağıda transform-origin
+   sabit 0,0 kabul edilip offsetX/offsetY tek bir yerden hesaplanıyor. */
+let scale=1, minScale=0.3, maxScale=24;
+let offsetX=0, offsetY=0;
+let isDragging=false, dragMoved=false, startX=0, startY=0;
+let lastPinchDist=0;
+let selected=null; // {x,y}: onay bekleyen hücre
+
+function updateTransform(){
+  canvas.style.transform=`translate(${offsetX}px,${offsetY}px) scale(${scale})`;
+}
+
+/* Sayfa ilk açıldığında (ve döndürüldüğünde) tüm tahtayı ekrana ortala.
+   Eskiden tahta varsayılan olarak 1:1 boyutta açılıp ekranın çok
+   dışına taşıyordu, mobilde "tuval küçük/kayık kalıyor" hissi buradan
+   geliyordu. */
+function fitToScreen(){
+  window.scrollTo(0,0); // sayfa kaymis olsa bile hucre secimi bozulmasin diye garantiye al
+  const paletteH = palette.offsetHeight || 70;
+  const availW = window.innerWidth;
+  const availH = window.innerHeight - paletteH;
+  const fitScale = Math.min(availW/canvas.width, availH/canvas.height);
+  scale = fitScale;
+  minScale = fitScale;
+  offsetX = (availW - canvas.width*scale)/2;
+  offsetY = (availH - canvas.height*scale)/2;
+  updateTransform();
+}
+window.addEventListener("load", fitToScreen);
+window.addEventListener("resize", fitToScreen);
+window.addEventListener("orientationchange", ()=>setTimeout(fitToScreen,250));
+fitToScreen();
+document.getElementById("fitBtn").addEventListener("click", ()=>{ clearSelection(); fitToScreen(); });
+
+/* Ekrandaki (clientX,clientY) noktasını sabit tutarak yakınlaştır/uzaklaştır.
+   Fare tekerleği ve pinch-zoom bu tek fonksiyonu paylaşıyor, bu yüzden
+   ikisi de aynı şekilde ve tutarlı davranıyor. */
+function zoomAt(clientX, clientY, newScale){
+  newScale = Math.min(Math.max(newScale, minScale), maxScale);
+  const factor = newScale/scale;
+  offsetX = clientX - (clientX-offsetX)*factor;
+  offsetY = clientY - (clientY-offsetY)*factor;
+  scale = newScale;
+  updateTransform();
+}
+
+/* Ekran koordinatını grid hücresine çevirir (transform-origin 0,0
+   olduğu için offsetX/offsetY doğrudan kullanılabiliyor). */
+function screenToGrid(clientX, clientY){
+  return {
+    x: Math.floor((clientX-offsetX)/(cellSize*scale)),
+    y: Math.floor((clientY-offsetY)/(cellSize*scale))
+  };
+}
+
+/* --- Dokunarak hücre seçme + onaylama akışı ---
+   Düşük zoom seviyesinde tek pikselin isabetli seçilmesi imkansıza
+   yakındı. Artık dokununca hücre seçiliyor ve boyanmadan önce üstüne
+   basılı bir çerçeveyle "burayı mı boyayacaksın?" diye soruluyor;
+   yanlışlıkla yanına basmak artık bir sorun değil. */
+function selectCell(gx,gy){
+  if(gx<0||gx>=gridSize||gy<0||gy>=gridSize) return;
+  selected={x:gx,y:gy};
+  redrawWithHighlight();
+  showConfirmBar();
+}
+function clearSelection(){
+  selected=null;
+  hideConfirmBar();
+  drawBoard();
+}
+function redrawWithHighlight(){
+  drawBoard();
+  if(!selected) return;
+  ctx.lineWidth=Math.max(1,1/scale);
+  ctx.strokeStyle="#000000";
+  ctx.strokeRect(selected.x*cellSize,selected.y*cellSize,cellSize,cellSize);
+  ctx.strokeStyle="#ffffff";
+  ctx.lineWidth=Math.max(0.5,0.5/scale);
+  ctx.strokeRect(selected.x*cellSize+0.5,selected.y*cellSize+0.5,cellSize-1,cellSize-1);
+}
+
+const confirmBar=document.getElementById("confirmBar");
+const confirmSwatch=document.getElementById("confirmSwatch");
+const confirmBtn=document.getElementById("confirmBtn");
+const cancelBtn=document.getElementById("cancelBtn");
+function showConfirmBar(){
+  confirmSwatch.style.background=currentColor;
+  confirmBar.style.bottom=(palette.offsetHeight+12)+"px";
+  confirmBar.style.display="flex";
+  confirmBtn.disabled=!canPlace;
+}
+function hideConfirmBar(){
+  confirmBar.style.display="none";
+}
+confirmBtn.addEventListener("click",()=>{
+  if(!selected||!canPlace) return;
+  if(socket && socket.readyState===WebSocket.OPEN){
+    socket.send(JSON.stringify({type:"place",x:selected.x,y:selected.y,color:currentColor}));
+    startCooldown();
+  }
+  clearSelection();
+});
+cancelBtn.addEventListener("click", clearSelection);
+
+/* PC – tıklama (sürükleme değilse hücre seç) */
+canvas.addEventListener("click",e=>{
+  if(dragMoved){ dragMoved=false; return; }
+  const {x,y}=screenToGrid(e.clientX,e.clientY);
+  selectCell(x,y);
+});
+
+/* PC – fare tekerleği ile imlecin altını sabit tutarak zoom */
+canvas.addEventListener("wheel",e=>{
+  e.preventDefault();
+  const newScale = scale * (1 - e.deltaY*0.001);
+  zoomAt(e.clientX, e.clientY, newScale);
+}, {passive:false});
+
+/* PC – sürükleyerek kaydırma (pan) */
+canvas.addEventListener("mousedown",e=>{
+  isDragging=true; dragMoved=false;
+  startX=e.clientX-offsetX; startY=e.clientY-offsetY;
+});
+canvas.addEventListener("mousemove",e=>{
+  if(!isDragging) return;
+  const nx=e.clientX-startX, ny=e.clientY-startY;
+  if(Math.abs(nx-offsetX)>3||Math.abs(ny-offsetY)>3) dragMoved=true;
+  offsetX=nx; offsetY=ny;
+  updateTransform();
+});
+canvas.addEventListener("mouseup",()=>{isDragging=false;});
+canvas.addEventListener("mouseleave",()=>{isDragging=false;});
+
+/* Mobil – pinch zoom + tek parmak pan + tek dokunuşla hücre seçme */
+function pinchDist(touches){
+  const dx=touches[0].clientX-touches[1].clientX;
+  const dy=touches[0].clientY-touches[1].clientY;
+  return Math.sqrt(dx*dx+dy*dy);
+}
+canvas.addEventListener("touchstart",e=>{
+  if(e.touches.length===1){
+    isDragging=true; dragMoved=false;
+    startX=e.touches[0].clientX-offsetX;
+    startY=e.touches[0].clientY-offsetY;
+  } else if(e.touches.length===2){
+    isDragging=false;
+    lastPinchDist=pinchDist(e.touches);
+  }
+}, {passive:true});
+
+canvas.addEventListener("touchmove",e=>{
+  if(e.touches.length===2){
+    e.preventDefault();
+    const dist=pinchDist(e.touches);
+    if(lastPinchDist){
+      const midX=(e.touches[0].clientX+e.touches[1].clientX)/2;
+      const midY=(e.touches[0].clientY+e.touches[1].clientY)/2;
+      zoomAt(midX, midY, scale*(dist/lastPinchDist));
+    }
+    lastPinchDist=dist;
+  } else if(e.touches.length===1 && isDragging){
+    e.preventDefault();
+    const nx=e.touches[0].clientX-startX;
+    const ny=e.touches[0].clientY-startY;
+    if(Math.abs(nx-offsetX)>6||Math.abs(ny-offsetY)>6) dragMoved=true;
+    offsetX=nx; offsetY=ny;
+    updateTransform();
+  }
+}, {passive:false});
+
+canvas.addEventListener("touchend",e=>{
+  const wasTap = e.touches.length===0 && e.changedTouches.length===1 && !dragMoved;
+  if(wasTap){
+    e.preventDefault(); // ayni dokunus icin tarayicinin tekrar "click" firlatmasini engelle
+    const t=e.changedTouches[0];
+    const {x,y}=screenToGrid(t.clientX,t.clientY);
+    selectCell(x,y);
+  }
+  isDragging=false; lastPinchDist=0; dragMoved=false;
+}, {passive:false});
+
+/* --- Koordinat sistemi (test sürümü) ---
+   PC'de bir hücreye çift tıklayınca o hücrenin koordinatını panoya
+   kopyalar. Sohbete "📍x,y" formatında bir mesaj olarak yapıştırıp
+   gönderdiğinde, mesajı tıklayan herkes direkt o noktaya götürülüyor. */
+canvas.addEventListener("dblclick", e=>{
+  const {x,y} = screenToGrid(e.clientX, e.clientY);
+  if(x<0||x>=gridSize||y<0||y>=gridSize) return;
+  copyCoordinate(`📍${x},${y}`);
+});
+
+function copyCoordinate(text){
+  const done = ()=> showToast(`Koordinat kopyalandı: ${text}`);
+  if(navigator.clipboard && navigator.clipboard.writeText){
+    navigator.clipboard.writeText(text).then(done).catch(()=>fallbackCopy(text,done));
+  } else {
+    fallbackCopy(text,done);
+  }
+}
+function fallbackCopy(text,cb){
+  try{
+    const ta=document.createElement("textarea");
+    ta.value=text; ta.style.position="fixed"; ta.style.opacity="0";
+    document.body.appendChild(ta); ta.select();
+    document.execCommand("copy");
+    document.body.removeChild(ta);
+    cb();
+  }catch(e){}
+}
+let coordToastTimer=null;
+function showToast(msg){
+  let toast=document.getElementById("coordToast");
+  if(!toast){
+    toast=document.createElement("div");
+    toast.id="coordToast";
+    document.body.appendChild(toast);
+  }
+  toast.textContent=msg;
+  // Yerlestir/Vazgec cubugunun ve paletin ustunde kalsin diye yuksekligi
+  // her seferinde yeniden hesapla (confirmBar acikken daha yukari cikar).
+  const confirmVisible = confirmBar.style.display==="flex";
+  const clearance = palette.offsetHeight + (confirmVisible ? confirmBar.offsetHeight + 24 : 16);
+  toast.style.bottom = clearance + "px";
+  toast.classList.add("show");
+  clearTimeout(coordToastTimer);
+  coordToastTimer=setTimeout(()=>toast.classList.remove("show"),2500);
+}
+
+/* Sohbetten bir koordinat linkine tiklaninca cagrilir: hala ana
+   menudeysek once oyunu acar, sonra tahtayi o hucreye gider ve
+   secili olarak isaretler. */
+function jumpToCoord(x,y){
+  if(!mainMenu.classList.contains("hidden")){
+    mainMenu.classList.add("hidden");
+    document.querySelectorAll(".hud").forEach(el=>el.classList.remove("hidden"));
+    fitToScreen();
+    if(!boardLoaded) loadingMsg.classList.remove("hidden");
+  }
+  chatPanel.classList.add("hidden");
+  const targetScale = Math.min(Math.max(scale, 6), maxScale);
+  const targetScreenX = window.innerWidth/2;
+  const targetScreenY = (window.innerHeight - palette.offsetHeight)/2;
+  scale = targetScale;
+  offsetX = targetScreenX - (x*cellSize + cellSize/2)*targetScale;
+  offsetY = targetScreenY - (y*cellSize + cellSize/2)*targetScale;
+  updateTransform();
+  selectCell(x,y);
+}
+
+</script>
+</body>
+</html>
