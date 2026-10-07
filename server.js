@@ -10,6 +10,13 @@ const CHAT_HISTORY_LIMIT = 50;
 const HEX_COLOR_REGEX = /^#[0-9A-Fa-f]{6}$/;
 const USERNAME_REGEX = /^[A-Za-z0-9ÇçĞğİıÖöŞşÜü_]{3,20}$/;
 const AUTH_COOLDOWN_MS = 3 * 1000; // ayni IP'den art arda kayit/giris denemesini yavaslat
+const CLAN_NAME_REGEX = /^[A-Za-z0-9ÇçĞğİıÖöŞşÜü_ ]{3,30}$/;
+const DM_COOLDOWN_MS = 2 * 1000;
+const CLAN_CHAT_COOLDOWN_MS = 2 * 1000;
+const CLAN_CHAT_HISTORY_LIMIT = 50;
+const MAX_CLAN_PHOTO_BYTES = 300 * 1024; // data URI olarak ~300KB sinir (depolamayi korumak icin)
+const MAX_AVATAR_BYTES = 150 * 1024;
+const CHANNELS = ["tr", "int", "europe", "asia", "america"];
 
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
@@ -38,8 +45,9 @@ const lastPlacedAt = new Map();
 
 // Sohbet: sadece bellekte tutuluyor, kalici degil (sunucu yeniden
 // baslarsa - orn. uykudan uyanirken - sifirlanir). Bu olcekte bir
-// veritabani tablosuna gerek yok, basit ve yeterli.
-let chatHistory = [];
+// veritabani tablosuna gerek yok, basit ve yeterli. Her kanalin
+// (tr/int/europe/asia/america) kendi ayri gecmisi var.
+const chatHistoryByChannel = new Map(CHANNELS.map((c) => [c, []]));
 const lastChatAt = new Map();
 let nextChatId = 1;
 // IP basina "ayni mesaji ust uste kac kez yazdi" takibi (spam tespiti icin)
@@ -47,6 +55,82 @@ const repeatTracker = new Map(); // ip -> { text, count, ids:[] }
 
 // Kayit/giris denemelerini IP basina yavaslatmak icin (brute-force/spam onleme)
 const lastAuthAt = new Map();
+
+// --- DM ve Klan altyapisi icin bellek ici onbellekler ---
+// usernameLower -> ws (DM yonlendirme ve "cevrimici mi" kontrolu icin)
+const onlineByUsername = new Map();
+// usernameLower -> clanNameLower (bir kullanicinin hangi klanda oldugunu
+// her mesajda veritabanina sormadan hizlica bulmak icin)
+const userClan = new Map();
+// clanNameLower -> Set<usernameLower> (klan sohbetini sadece uyelere
+// yollarken hizli filtrelemek icin)
+const clanMembersCache = new Map();
+// clanNameLower -> son mesajlar dizisi (bellekte, kalici degil)
+const clanChatHistory = new Map();
+const lastDmAt = new Map();
+const lastClanChatAt = new Map();
+
+async function loadClanCaches() {
+  const members = await pool.query("SELECT clan_name_lower, username_lower FROM clan_members");
+  userClan.clear();
+  clanMembersCache.clear();
+  for (const row of members.rows) {
+    userClan.set(row.username_lower, row.clan_name_lower);
+    if (!clanMembersCache.has(row.clan_name_lower)) clanMembersCache.set(row.clan_name_lower, new Set());
+    clanMembersCache.get(row.clan_name_lower).add(row.username_lower);
+  }
+}
+
+async function getClanFullInfo(nameLower) {
+  const clanRes = await pool.query("SELECT * FROM clans WHERE name_lower=$1", [nameLower]);
+  if (!clanRes.rows.length) return null;
+  const clan = clanRes.rows[0];
+  const membersRes = await pool.query(
+    "SELECT username, role FROM clan_members WHERE clan_name_lower=$1 ORDER BY joined_at ASC",
+    [nameLower]
+  );
+  return {
+    name: clan.name,
+    description: clan.description,
+    photo_data: clan.photo_data,
+    owner: clan.owner_username,
+    members: membersRes.rows.map((m) => ({
+      username: m.username,
+      role: m.role,
+      online: onlineByUsername.has(m.username.toLocaleLowerCase("tr"))
+    }))
+  };
+}
+
+async function sendMyClanInfo(ws) {
+  if (!ws.username || ws.readyState !== WebSocket.OPEN) return;
+  const meLower = ws.username.toLocaleLowerCase("tr");
+  const nameLower = userClan.get(meLower);
+  if (!nameLower) {
+    ws.send(JSON.stringify({ type: "my_clan", clan: null }));
+    return;
+  }
+  const info = await getClanFullInfo(nameLower);
+  ws.send(JSON.stringify({
+    type: "my_clan",
+    clan: info,
+    chatHistory: clanChatHistory.get(nameLower) || []
+  }));
+}
+
+// Klan icine "X klana katildi/ayrildi" gibi sistem mesajlari yollar
+function broadcastClanSystemMessage(nameLower, text) {
+  const entry = { name: "🛡️ Sistem", text, ts: Date.now(), system: true };
+  const hist = clanChatHistory.get(nameLower) || [];
+  hist.push(entry);
+  if (hist.length > CLAN_CHAT_HISTORY_LIMIT) hist.shift();
+  clanChatHistory.set(nameLower, hist);
+  const payload = JSON.stringify({ type: "clan_chat", ...entry });
+  for (const memberLower of clanMembersCache.get(nameLower) || []) {
+    const mWs = onlineByUsername.get(memberLower);
+    if (mWs && mWs.readyState === WebSocket.OPEN) mWs.send(payload);
+  }
+}
 
 // Basit kufur/argo/+18 kelime filtresi. Kelime sinirlarina gore kontrol
 // ediyoruz (orn. "sik" gecen "sikayet" gibi masum kelimeleri yanlislikla
@@ -92,7 +176,7 @@ function broadcast(obj) {
 // Sohbet gecmisini 24 saatte bir otomatik temizle (istek uzerine).
 const CHAT_HISTORY_MAX_AGE_MS = 24 * 60 * 60 * 1000;
 setInterval(() => {
-  chatHistory = [];
+  for (const c of CHANNELS) chatHistoryByChannel.set(c, []);
   repeatTracker.clear();
   broadcast({ type: "chat_clear" });
   console.log("Sohbet gecmisi 24 saatlik periyotla temizlendi.");
@@ -119,6 +203,42 @@ async function ensureSchema() {
       created_at TIMESTAMPTZ DEFAULT NOW()
     );
   `);
+  // Tablo zaten varolan kullanicilarla birlikte duruyor olabilir, o yuzden
+  // yeni sutunlari ALTER ile (var olan veriyi bozmadan) ekliyoruz.
+  await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS avatar_data TEXT;`);
+  await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS bio TEXT NOT NULL DEFAULT '';`);
+  // Arkadaslik: tek satirda yon bilgisi (kim istek atti) + durum tutuluyor.
+  // accepted olunca iki yonlu arkadaslik anlamina geliyor.
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS friend_requests (
+      from_lower TEXT NOT NULL,
+      to_lower TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'pending',
+      created_at TIMESTAMPTZ DEFAULT NOW(),
+      PRIMARY KEY (from_lower, to_lower)
+    );
+  `);
+  // Klanlar da kendi tablosunda - piksel ve kullanici verisinden ayri.
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS clans (
+      name_lower TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      description TEXT NOT NULL DEFAULT '',
+      photo_data TEXT,
+      owner_username TEXT NOT NULL,
+      created_at TIMESTAMPTZ DEFAULT NOW()
+    );
+  `);
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS clan_members (
+      clan_name_lower TEXT NOT NULL REFERENCES clans(name_lower) ON DELETE CASCADE,
+      username TEXT NOT NULL,
+      username_lower TEXT NOT NULL,
+      role TEXT NOT NULL DEFAULT 'member',
+      joined_at TIMESTAMPTZ DEFAULT NOW(),
+      PRIMARY KEY (clan_name_lower, username_lower)
+    );
+  `);
 }
 
 async function loadBoard() {
@@ -141,11 +261,20 @@ wss.on("connection", async (ws, req) => {
   ws.on("close", () => {
     // biraz gecikmeyle yayinlayalim ki ws zaten clients setinden cikmis olsun
     setTimeout(() => broadcast({ type: "online", count: wss.clients.size }), 0);
+    if (ws.username) {
+      const lower = ws.username.toLocaleLowerCase("tr");
+      if (onlineByUsername.get(lower) === ws) onlineByUsername.delete(lower);
+    }
   });
 
   try {
     const board = await loadBoard();
-    ws.send(JSON.stringify({ type: "init", board, chat: chatHistory, online: wss.clients.size }));
+    ws.send(JSON.stringify({
+      type: "init",
+      board,
+      chatByChannel: Object.fromEntries(chatHistoryByChannel),
+      online: wss.clients.size
+    }));
   } catch (err) {
     console.error("Tahta yuklenirken hata:", err);
   }
@@ -205,6 +334,7 @@ wss.on("connection", async (ws, req) => {
             return;
           }
           ws.username = result.rows[0].username;
+          onlineByUsername.set(usernameLower, ws);
           ws.send(JSON.stringify({ type: "auth_ok", action, username: ws.username }));
         } else {
           const result = await pool.query(
@@ -222,8 +352,11 @@ wss.on("connection", async (ws, req) => {
             return;
           }
           ws.username = row.username;
+          onlineByUsername.set(usernameLower, ws);
           ws.send(JSON.stringify({ type: "auth_ok", action, username: ws.username }));
         }
+        // Giris/kayit basarili oldu: eger bir klana uyeyse, bilgisini hemen yolla
+        await sendMyClanInfo(ws);
       } catch (err) {
         console.error(`${action} hatasi:`, err);
         sendAuthError("Sunucu hatası, tekrar dene.");
@@ -232,7 +365,462 @@ wss.on("connection", async (ws, req) => {
     }
 
     if (data.type === "logout") {
+      if (ws.username) onlineByUsername.delete(ws.username.toLocaleLowerCase("tr"));
       ws.username = null;
+      return;
+    }
+
+    // --- Profil: baskasinin hesabini inceleme + kendi fotograf/bio'nu guncelleme ---
+    if (data.type === "get_profile") {
+      const targetUsername = typeof data.username === "string" ? data.username.trim() : "";
+      const targetLower = targetUsername.toLocaleLowerCase("tr");
+      try {
+        const userRes = await pool.query(
+          "SELECT username, avatar_data, bio FROM users WHERE username_lower=$1",
+          [targetLower]
+        );
+        if (userRes.rows.length === 0) {
+          ws.send(JSON.stringify({ type: "profile", username: targetUsername, found: false }));
+          return;
+        }
+        const row = userRes.rows[0];
+        const clanLower = userClan.get(targetLower);
+        let clanName = null;
+        if (clanLower) {
+          const clanRes = await pool.query("SELECT name FROM clans WHERE name_lower=$1", [clanLower]);
+          if (clanRes.rows.length) clanName = clanRes.rows[0].name;
+        }
+        let friendStatus = "none"; // none | pending_sent | pending_received | friends | self
+        if (ws.username) {
+          const meLower = ws.username.toLocaleLowerCase("tr");
+          if (meLower === targetLower) {
+            friendStatus = "self";
+          } else {
+            const fr = await pool.query(
+              `SELECT from_lower, status FROM friend_requests
+               WHERE (from_lower=$1 AND to_lower=$2) OR (from_lower=$2 AND to_lower=$1)`,
+              [meLower, targetLower]
+            );
+            if (fr.rows.length) {
+              const r = fr.rows[0];
+              if (r.status === "accepted") friendStatus = "friends";
+              else friendStatus = r.from_lower === meLower ? "pending_sent" : "pending_received";
+            }
+          }
+        }
+        ws.send(JSON.stringify({
+          type: "profile", found: true, username: row.username,
+          avatar_data: row.avatar_data, bio: row.bio,
+          clan: clanName, friendStatus,
+          online: onlineByUsername.has(targetLower)
+        }));
+      } catch (err) {
+        console.error("get_profile hatasi:", err);
+      }
+      return;
+    }
+
+    if (data.type === "get_avatar") {
+      const targetLower = (typeof data.username === "string" ? data.username : "").trim().toLocaleLowerCase("tr");
+      if (!targetLower) return;
+      try {
+        const r = await pool.query("SELECT username, avatar_data FROM users WHERE username_lower=$1", [targetLower]);
+        if (r.rows.length) {
+          ws.send(JSON.stringify({ type: "avatar", username: r.rows[0].username, avatar_data: r.rows[0].avatar_data }));
+        }
+      } catch (err) {
+        console.error("get_avatar hatasi:", err);
+      }
+      return;
+    }
+
+    if (data.type === "update_profile") {
+      if (!ws.username) return;
+      let { avatar_data, bio } = data;
+      if (typeof avatar_data === "string" && avatar_data.length > MAX_AVATAR_BYTES) {
+        ws.send(JSON.stringify({ type: "profile_error", reason: "Fotoğraf çok büyük, daha küçük bir resim dene." }));
+        return;
+      }
+      bio = typeof bio === "string" ? bio.trim().slice(0, 150) : "";
+      if (containsBannedWord(bio)) {
+        ws.send(JSON.stringify({ type: "profile_error", reason: "Hakkında yazın uygunsuz içerik barındırıyor." }));
+        return;
+      }
+      try {
+        await pool.query(
+          "UPDATE users SET avatar_data=COALESCE($1, avatar_data), bio=$2 WHERE username_lower=$3",
+          [typeof avatar_data === "string" && avatar_data ? avatar_data : null, bio, ws.username.toLocaleLowerCase("tr")]
+        );
+        ws.send(JSON.stringify({ type: "profile_updated" }));
+      } catch (err) {
+        console.error("update_profile hatasi:", err);
+        ws.send(JSON.stringify({ type: "profile_error", reason: "Kaydedilemedi, tekrar dene." }));
+      }
+      return;
+    }
+
+    // --- Arkadaslik ---
+    if (data.type === "send_friend_request") {
+      if (!ws.username) return;
+      const meLower = ws.username.toLocaleLowerCase("tr");
+      const targetLower = (typeof data.username === "string" ? data.username : "").trim().toLocaleLowerCase("tr");
+      if (!targetLower || targetLower === meLower) return;
+      try {
+        const existing = await pool.query(
+          `SELECT status FROM friend_requests WHERE (from_lower=$1 AND to_lower=$2) OR (from_lower=$2 AND to_lower=$1)`,
+          [meLower, targetLower]
+        );
+        if (existing.rows.length) {
+          ws.send(JSON.stringify({ type: "friend_error", reason: "Zaten arkadaşsınız ya da istek bekliyor." }));
+          return;
+        }
+        await pool.query(
+          "INSERT INTO friend_requests (from_lower, to_lower, status) VALUES ($1,$2,'pending')",
+          [meLower, targetLower]
+        );
+        ws.send(JSON.stringify({ type: "friend_request_sent", username: data.username }));
+        const targetWs = onlineByUsername.get(targetLower);
+        if (targetWs && targetWs.readyState === WebSocket.OPEN) {
+          targetWs.send(JSON.stringify({ type: "friend_request_received", from: ws.username }));
+        }
+      } catch (err) {
+        console.error("send_friend_request hatasi:", err);
+      }
+      return;
+    }
+
+    if (data.type === "respond_friend_request") {
+      if (!ws.username) return;
+      const meLower = ws.username.toLocaleLowerCase("tr");
+      const fromLower = (typeof data.username === "string" ? data.username : "").trim().toLocaleLowerCase("tr");
+      const accept = !!data.accept;
+      try {
+        if (accept) {
+          const r = await pool.query(
+            "UPDATE friend_requests SET status='accepted' WHERE from_lower=$1 AND to_lower=$2 AND status='pending' RETURNING from_lower",
+            [fromLower, meLower]
+          );
+          if (r.rows.length) {
+            ws.send(JSON.stringify({ type: "friend_accepted", username: data.username }));
+            const fromWs = onlineByUsername.get(fromLower);
+            if (fromWs && fromWs.readyState === WebSocket.OPEN) {
+              fromWs.send(JSON.stringify({ type: "friend_accepted", username: ws.username }));
+            }
+          }
+        } else {
+          await pool.query(
+            "DELETE FROM friend_requests WHERE from_lower=$1 AND to_lower=$2 AND status='pending'",
+            [fromLower, meLower]
+          );
+          ws.send(JSON.stringify({ type: "friend_declined", username: data.username }));
+        }
+      } catch (err) {
+        console.error("respond_friend_request hatasi:", err);
+      }
+      return;
+    }
+
+    if (data.type === "list_friends") {
+      if (!ws.username) return;
+      const meLower = ws.username.toLocaleLowerCase("tr");
+      try {
+        const friends = await pool.query(
+          `SELECT CASE WHEN from_lower=$1 THEN to_lower ELSE from_lower END AS friend_lower
+           FROM friend_requests WHERE (from_lower=$1 OR to_lower=$1) AND status='accepted'`,
+          [meLower]
+        );
+        const pending = await pool.query(
+          "SELECT from_lower FROM friend_requests WHERE to_lower=$1 AND status='pending'",
+          [meLower]
+        );
+        const lowers = [...friends.rows.map((r) => r.friend_lower), ...pending.rows.map((r) => r.from_lower)];
+        let names = {};
+        if (lowers.length) {
+          const nameRes = await pool.query(
+            "SELECT username_lower, username FROM users WHERE username_lower = ANY($1)",
+            [lowers]
+          );
+          nameRes.rows.forEach((r) => { names[r.username_lower] = r.username; });
+        }
+        ws.send(JSON.stringify({
+          type: "friends_list",
+          friends: friends.rows.map((r) => ({
+            username: names[r.friend_lower] || r.friend_lower,
+            online: onlineByUsername.has(r.friend_lower)
+          })),
+          pendingIncoming: pending.rows.map((r) => names[r.from_lower] || r.from_lower)
+        }));
+      } catch (err) {
+        console.error("list_friends hatasi:", err);
+      }
+      return;
+    }
+
+    // --- Ozel mesaj (DM) - kalici degil, sadece aninda iletilir ---
+    if (data.type === "send_dm") {
+      if (!ws.username) {
+        ws.send(JSON.stringify({ type: "dm_error", reason: "DM göndermek için giriş yapmalısın." }));
+        return;
+      }
+      let { to, text } = data;
+      if (typeof to !== "string" || typeof text !== "string") return;
+      text = text.trim().slice(0, 300);
+      if (!text) return;
+      if (containsBannedWord(text)) {
+        ws.send(JSON.stringify({ type: "dm_error", reason: "Mesaj uygunsuz içerik nedeniyle gönderilemedi." }));
+        return;
+      }
+      const dmNow = Date.now();
+      const lastDm = lastDmAt.get(ws.clientIp) || 0;
+      if (dmNow - lastDm < DM_COOLDOWN_MS) return;
+      lastDmAt.set(ws.clientIp, dmNow);
+
+      const toLower = to.trim().toLocaleLowerCase("tr");
+      const targetWs = onlineByUsername.get(toLower);
+      const payload = { type: "dm", from: ws.username, to, text, ts: dmNow };
+      if (targetWs && targetWs.readyState === WebSocket.OPEN) {
+        targetWs.send(JSON.stringify(payload));
+        ws.send(JSON.stringify({ ...payload, self: true }));
+      } else {
+        ws.send(JSON.stringify({ type: "dm_error", reason: `${to} şu anda çevrimdışı.` }));
+      }
+      return;
+    }
+
+    // --- Klan ---
+    if (data.type === "create_clan") {
+      if (!ws.username) return;
+      const meLower = ws.username.toLocaleLowerCase("tr");
+      if (userClan.has(meLower)) {
+        ws.send(JSON.stringify({ type: "clan_error", reason: "Zaten bir klana üyesin, önce ayrılmalısın." }));
+        return;
+      }
+      const name = typeof data.name === "string" ? data.name.trim() : "";
+      const description = typeof data.description === "string" ? data.description.trim().slice(0, 200) : "";
+      if (!CLAN_NAME_REGEX.test(name)) {
+        ws.send(JSON.stringify({ type: "clan_error", reason: "Klan adı 3-30 karakter olmalı." }));
+        return;
+      }
+      if (containsBannedWord(name) || containsBannedWord(description)) {
+        ws.send(JSON.stringify({ type: "clan_error", reason: "Klan adı/açıklaması uygunsuz içerik barındırıyor." }));
+        return;
+      }
+      const nameLower = name.toLocaleLowerCase("tr");
+      try {
+        const result = await pool.query(
+          `INSERT INTO clans (name_lower, name, description, owner_username) VALUES ($1,$2,$3,$4)
+           ON CONFLICT (name_lower) DO NOTHING RETURNING name_lower`,
+          [nameLower, name, description, ws.username]
+        );
+        if (!result.rows.length) {
+          ws.send(JSON.stringify({ type: "clan_error", reason: "Bu klan adı zaten alınmış." }));
+          return;
+        }
+        await pool.query(
+          "INSERT INTO clan_members (clan_name_lower, username, username_lower, role) VALUES ($1,$2,$3,'owner')",
+          [nameLower, ws.username, meLower]
+        );
+        userClan.set(meLower, nameLower);
+        clanMembersCache.set(nameLower, new Set([meLower]));
+        clanChatHistory.set(nameLower, []);
+        await sendMyClanInfo(ws);
+      } catch (err) {
+        console.error("create_clan hatasi:", err);
+        ws.send(JSON.stringify({ type: "clan_error", reason: "Sunucu hatası, tekrar dene." }));
+      }
+      return;
+    }
+
+    if (data.type === "list_clans") {
+      try {
+        const res = await pool.query(`
+          SELECT c.name, c.description, c.photo_data, c.owner_username,
+                 COUNT(m.username_lower) AS member_count
+          FROM clans c LEFT JOIN clan_members m ON m.clan_name_lower = c.name_lower
+          GROUP BY c.name_lower, c.name, c.description, c.photo_data, c.owner_username
+          ORDER BY member_count DESC
+          LIMIT 100
+        `);
+        ws.send(JSON.stringify({
+          type: "clans_list",
+          clans: res.rows.map((r) => ({
+            name: r.name, description: r.description, photo_data: r.photo_data,
+            owner: r.owner_username, memberCount: Number(r.member_count)
+          }))
+        }));
+      } catch (err) {
+        console.error("list_clans hatasi:", err);
+      }
+      return;
+    }
+
+    if (data.type === "join_clan") {
+      if (!ws.username) return;
+      const meLower = ws.username.toLocaleLowerCase("tr");
+      if (userClan.has(meLower)) {
+        ws.send(JSON.stringify({ type: "clan_error", reason: "Zaten bir klana üyesin." }));
+        return;
+      }
+      const nameLower = (typeof data.name === "string" ? data.name : "").trim().toLocaleLowerCase("tr");
+      try {
+        const clanRes = await pool.query("SELECT name_lower FROM clans WHERE name_lower=$1", [nameLower]);
+        if (!clanRes.rows.length) {
+          ws.send(JSON.stringify({ type: "clan_error", reason: "Klan bulunamadı." }));
+          return;
+        }
+        await pool.query(
+          "INSERT INTO clan_members (clan_name_lower, username, username_lower, role) VALUES ($1,$2,$3,'member')",
+          [nameLower, ws.username, meLower]
+        );
+        userClan.set(meLower, nameLower);
+        if (!clanMembersCache.has(nameLower)) clanMembersCache.set(nameLower, new Set());
+        clanMembersCache.get(nameLower).add(meLower);
+        await sendMyClanInfo(ws);
+        broadcastClanSystemMessage(nameLower, `${ws.username} klana katıldı.`);
+      } catch (err) {
+        console.error("join_clan hatasi:", err);
+        ws.send(JSON.stringify({ type: "clan_error", reason: "Katılamadın, tekrar dene." }));
+      }
+      return;
+    }
+
+    if (data.type === "leave_clan") {
+      if (!ws.username) return;
+      const meLower = ws.username.toLocaleLowerCase("tr");
+      const nameLower = userClan.get(meLower);
+      if (!nameLower) return;
+      try {
+        const clanRes = await pool.query("SELECT owner_username FROM clans WHERE name_lower=$1", [nameLower]);
+        const isOwner = clanRes.rows.length && clanRes.rows[0].owner_username.toLocaleLowerCase("tr") === meLower;
+        await pool.query(
+          "DELETE FROM clan_members WHERE clan_name_lower=$1 AND username_lower=$2",
+          [nameLower, meLower]
+        );
+        userClan.delete(meLower);
+        clanMembersCache.get(nameLower)?.delete(meLower);
+
+        if (isOwner) {
+          const remaining = await pool.query(
+            "SELECT username, username_lower FROM clan_members WHERE clan_name_lower=$1 ORDER BY joined_at ASC LIMIT 1",
+            [nameLower]
+          );
+          if (remaining.rows.length) {
+            const newOwner = remaining.rows[0];
+            await pool.query("UPDATE clans SET owner_username=$1 WHERE name_lower=$2", [newOwner.username, nameLower]);
+            await pool.query(
+              "UPDATE clan_members SET role='owner' WHERE clan_name_lower=$1 AND username_lower=$2",
+              [nameLower, newOwner.username_lower]
+            );
+            broadcastClanSystemMessage(nameLower, `${ws.username} ayrıldı, yönetim ${newOwner.username}'e geçti.`);
+          } else {
+            await pool.query("DELETE FROM clans WHERE name_lower=$1", [nameLower]);
+            clanMembersCache.delete(nameLower);
+            clanChatHistory.delete(nameLower);
+          }
+        } else {
+          broadcastClanSystemMessage(nameLower, `${ws.username} klandan ayrıldı.`);
+        }
+        ws.send(JSON.stringify({ type: "my_clan", clan: null }));
+      } catch (err) {
+        console.error("leave_clan hatasi:", err);
+      }
+      return;
+    }
+
+    if (data.type === "kick_clan_member") {
+      if (!ws.username) return;
+      const meLower = ws.username.toLocaleLowerCase("tr");
+      const nameLower = userClan.get(meLower);
+      if (!nameLower) return;
+      try {
+        const clanRes = await pool.query("SELECT owner_username FROM clans WHERE name_lower=$1", [nameLower]);
+        if (!clanRes.rows.length || clanRes.rows[0].owner_username.toLocaleLowerCase("tr") !== meLower) {
+          ws.send(JSON.stringify({ type: "clan_error", reason: "Sadece klan sahibi üye çıkarabilir." }));
+          return;
+        }
+        const targetLower = (typeof data.username === "string" ? data.username : "").trim().toLocaleLowerCase("tr");
+        if (!targetLower || targetLower === meLower) return;
+        await pool.query(
+          "DELETE FROM clan_members WHERE clan_name_lower=$1 AND username_lower=$2",
+          [nameLower, targetLower]
+        );
+        userClan.delete(targetLower);
+        clanMembersCache.get(nameLower)?.delete(targetLower);
+        broadcastClanSystemMessage(nameLower, `${data.username} klandan çıkarıldı.`);
+        const targetWs = onlineByUsername.get(targetLower);
+        if (targetWs && targetWs.readyState === WebSocket.OPEN) {
+          targetWs.send(JSON.stringify({ type: "my_clan", clan: null }));
+          targetWs.send(JSON.stringify({ type: "clan_error", reason: "Klandan çıkarıldın." }));
+        }
+        await sendMyClanInfo(ws);
+      } catch (err) {
+        console.error("kick_clan_member hatasi:", err);
+      }
+      return;
+    }
+
+    if (data.type === "update_clan") {
+      if (!ws.username) return;
+      const meLower = ws.username.toLocaleLowerCase("tr");
+      const nameLower = userClan.get(meLower);
+      if (!nameLower) return;
+      try {
+        const clanRes = await pool.query("SELECT owner_username FROM clans WHERE name_lower=$1", [nameLower]);
+        if (!clanRes.rows.length || clanRes.rows[0].owner_username.toLocaleLowerCase("tr") !== meLower) {
+          ws.send(JSON.stringify({ type: "clan_error", reason: "Sadece klan sahibi ayarları değiştirebilir." }));
+          return;
+        }
+        const description = typeof data.description === "string" ? data.description.trim().slice(0, 200) : undefined;
+        const photo_data = typeof data.photo_data === "string" ? data.photo_data : undefined;
+        if (description !== undefined && containsBannedWord(description)) {
+          ws.send(JSON.stringify({ type: "clan_error", reason: "Açıklama uygunsuz içerik barındırıyor." }));
+          return;
+        }
+        if (photo_data && photo_data.length > MAX_CLAN_PHOTO_BYTES) {
+          ws.send(JSON.stringify({ type: "clan_error", reason: "Fotoğraf çok büyük." }));
+          return;
+        }
+        await pool.query(
+          "UPDATE clans SET description=COALESCE($1,description), photo_data=COALESCE($2,photo_data) WHERE name_lower=$3",
+          [description, photo_data, nameLower]
+        );
+        for (const memberLower of clanMembersCache.get(nameLower) || []) {
+          const mWs = onlineByUsername.get(memberLower);
+          if (mWs) await sendMyClanInfo(mWs);
+        }
+      } catch (err) {
+        console.error("update_clan hatasi:", err);
+      }
+      return;
+    }
+
+    if (data.type === "clan_chat") {
+      if (!ws.username) return;
+      const meLower = ws.username.toLocaleLowerCase("tr");
+      const nameLower = userClan.get(meLower);
+      if (!nameLower) return;
+      let text = typeof data.text === "string" ? data.text.trim().slice(0, 200) : "";
+      if (!text) return;
+      if (containsBannedWord(text)) {
+        ws.send(JSON.stringify({ type: "chat_blocked", reason: "Mesaj uygunsuz içerik nedeniyle gönderilemedi." }));
+        return;
+      }
+      const ccNow = Date.now();
+      const lastC = lastClanChatAt.get(ws.clientIp) || 0;
+      if (ccNow - lastC < CLAN_CHAT_COOLDOWN_MS) return;
+      lastClanChatAt.set(ws.clientIp, ccNow);
+
+      const entry = { name: ws.username, text, ts: ccNow };
+      const hist = clanChatHistory.get(nameLower) || [];
+      hist.push(entry);
+      if (hist.length > CLAN_CHAT_HISTORY_LIMIT) hist.shift();
+      clanChatHistory.set(nameLower, hist);
+
+      const payload = JSON.stringify({ type: "clan_chat", ...entry });
+      for (const memberLower of clanMembersCache.get(nameLower) || []) {
+        const mWs = onlineByUsername.get(memberLower);
+        if (mWs && mWs.readyState === WebSocket.OPEN) mWs.send(payload);
+      }
       return;
     }
 
@@ -250,10 +838,11 @@ wss.on("connection", async (ws, req) => {
         return;
       }
       const name = ws.username;
-      let { text } = data;
+      let { text, channel } = data;
       if (typeof text !== "string") return;
       text = text.trim().slice(0, 200);
       if (!text) return;
+      if (!CHANNELS.includes(channel)) channel = "tr";
 
       // --- Kufur/argo/+18 filtresi: bu kelimeler geciyorsa mesaj hic
       // yayinlanmiyor, gonderene de bir seffaflik icin bilgi gonderiliyor ---
@@ -283,24 +872,27 @@ wss.on("connection", async (ws, req) => {
       }
       tracker.count++;
 
+      const channelHistory = chatHistoryByChannel.get(channel);
+
       if (tracker.count >= 3) {
         // 3. tekrarda: onceki ayni mesajlari herkesin ekranindan da sil,
         // bu mesaji da hic eklemeden yoksay.
-        tracker.ids.forEach((id) => {
-          chatHistory = chatHistory.filter((m) => m.id !== id);
-          broadcast({ type: "chat_delete", id });
+        tracker.ids.forEach(({ id, ch }) => {
+          const h = chatHistoryByChannel.get(ch);
+          if (h) chatHistoryByChannel.set(ch, h.filter((m) => m.id !== id));
+          broadcast({ type: "chat_delete", id, channel: ch });
         });
         tracker.ids = [];
         return;
       }
 
       const id = nextChatId++;
-      const entry = { id, name, text, ts: now };
-      chatHistory.push(entry);
-      if (chatHistory.length > CHAT_HISTORY_LIMIT) chatHistory.shift();
-      tracker.ids.push(id);
+      const entry = { id, name, text, ts: now, channel };
+      channelHistory.push(entry);
+      if (channelHistory.length > CHAT_HISTORY_LIMIT) channelHistory.shift();
+      tracker.ids.push({ id, ch: channel });
 
-      broadcast({ type: "chat", id, name, text, ts: now });
+      broadcast({ type: "chat", id, name, text, ts: now, channel });
       return;
     }
 
@@ -344,6 +936,7 @@ wss.on("connection", async (ws, req) => {
 const PORT = process.env.PORT || 3000;
 
 ensureSchema()
+  .then(() => loadClanCaches())
   .then(() => {
     server.listen(PORT, () => {
       console.log(`PixelTur V2 backend ${PORT} portunda calisiyor`);

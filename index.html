@@ -991,6 +991,13 @@ document.querySelectorAll(".authTab").forEach(tab=>{
   tab.addEventListener("click", ()=>setAuthMode(tab.dataset.mode));
 });
 
+const authFormSection = document.getElementById("authFormSection");
+const accountView = document.getElementById("accountView");
+const myAvatarPreview = document.getElementById("myAvatarPreview");
+const avatarFileInput = document.getElementById("avatarFileInput");
+const bioInput = document.getElementById("bioInput");
+let myAvatarData = null;
+
 function updateLoggedInUI(){
   if(loggedInUsername){
     loggedInBar.classList.remove("hidden");
@@ -1000,9 +1007,13 @@ function updateLoggedInUI(){
     logoutBtn.addEventListener("click", logout);
     loggedInBar.appendChild(logoutBtn);
     authBtn.textContent = "👤 Hesabım";
+    authFormSection.classList.add("hidden");
+    accountView.classList.remove("hidden");
   } else {
     loggedInBar.classList.add("hidden");
     authBtn.textContent = "👤 Giriş Yap / Kayıt Ol";
+    authFormSection.classList.remove("hidden");
+    accountView.classList.add("hidden");
   }
 }
 
@@ -1017,7 +1028,350 @@ authBtn.addEventListener("click", ()=>{
   authMsg.textContent=""; authMsg.className="";
   authUsername.value = loggedInUsername || localStorage.getItem("placeturk_logged_in_as") || "";
   authPanel.classList.remove("hidden");
+  if(loggedInUsername && socket && socket.readyState===WebSocket.OPEN){
+    socket.send(JSON.stringify({type:"list_friends"}));
+  }
 });
+
+/* Kucuk bir resmi (dosya) secilen kare boyuta kirpip JPEG data URI'ye
+   cevirir - avatar ve klan fotografi icin ortak kullaniliyor. */
+function fileToResizedDataUri(file, size, cb){
+  const reader = new FileReader();
+  reader.onload = ev=>{
+    const img = new Image();
+    img.onload = ()=>{
+      const c = document.createElement("canvas");
+      c.width = size; c.height = size;
+      const ctx2 = c.getContext("2d");
+      const side = Math.min(img.width, img.height);
+      const sx = (img.width-side)/2, sy=(img.height-side)/2;
+      ctx2.drawImage(img, sx, sy, side, side, 0, 0, size, size);
+      cb(c.toDataURL("image/jpeg", 0.75));
+    };
+    img.src = ev.target.result;
+  };
+  reader.readAsDataURL(file);
+}
+
+function showAccountMsg(text, cls){
+  authMsg.textContent = text || "";
+  authMsg.className = cls || "";
+}
+
+document.getElementById("avatarUploadRow").addEventListener("click", ()=>avatarFileInput.click());
+avatarFileInput.addEventListener("change", ()=>{
+  const file = avatarFileInput.files[0];
+  if(!file) return;
+  fileToResizedDataUri(file, 128, dataUri=>{
+    myAvatarData = dataUri;
+    myAvatarPreview.style.backgroundImage = `url(${dataUri})`;
+    myAvatarPreview.textContent = "";
+  });
+});
+document.getElementById("saveProfileBtn").addEventListener("click", ()=>{
+  if(!(socket && socket.readyState===WebSocket.OPEN)) return;
+  socket.send(JSON.stringify({type:"update_profile", avatar_data:myAvatarData, bio:bioInput.value.trim()}));
+});
+function handleProfileUpdated(){
+  showAccountMsg("Profil kaydedildi!", "success");
+  myAvatarData = null; // bir sonraki acilista yeniden sunucudan cekilsin
+}
+
+document.getElementById("accountLogoutBtn").addEventListener("click", logout);
+document.getElementById("closeProfileBtn").addEventListener("click", ()=>profileModal.classList.add("hidden"));
+
+/* --- Profil goruntuleme (baskasinin hesabini inceleme) --- */
+const profileModal = document.getElementById("profileModal");
+const profileAvatarBig = document.getElementById("profileAvatarBig");
+const profileUsername = document.getElementById("profileUsername");
+const profileClanTag = document.getElementById("profileClanTag");
+const profileBio = document.getElementById("profileBio");
+const profileActions = document.getElementById("profileActions");
+
+function openProfile(username){
+  if(!username || !(socket && socket.readyState===WebSocket.OPEN)) return;
+  socket.send(JSON.stringify({type:"get_profile", username}));
+  profileModal.classList.remove("hidden");
+  profileUsername.textContent = "Yükleniyor...";
+  profileAvatarBig.style.backgroundImage = ""; profileAvatarBig.textContent = "";
+  profileBio.textContent = ""; profileClanTag.classList.add("hidden");
+  profileActions.innerHTML = "";
+}
+
+function makeActionBtn(label, onClick){
+  const b=document.createElement("button");
+  b.className = "profileActionBtn"; b.type="button";
+  b.textContent = label; b.addEventListener("click", onClick);
+  return b;
+}
+
+function renderProfile(data){
+  if(!data.found){
+    profileUsername.textContent = data.username || "Bulunamadı";
+    profileBio.textContent = "Bu kullanıcı bulunamadı.";
+    return;
+  }
+  profileUsername.textContent = data.username + (data.online ? " 🟢" : "");
+  profileBio.textContent = data.bio || "(Henüz bir şey yazmamış)";
+  if(data.avatar_data){
+    profileAvatarBig.style.backgroundImage = `url(${data.avatar_data})`;
+    profileAvatarBig.textContent = "";
+  } else {
+    profileAvatarBig.style.backgroundImage = "";
+    profileAvatarBig.textContent = data.username.charAt(0).toUpperCase();
+  }
+  if(data.clan){
+    profileClanTag.textContent = `🛡️ ${data.clan}`;
+    profileClanTag.classList.remove("hidden");
+  } else profileClanTag.classList.add("hidden");
+
+  profileActions.innerHTML = "";
+  if(data.friendStatus === "friends"){
+    profileActions.appendChild(makeActionBtn("✉️ DM Gönder", ()=>{ profileModal.classList.add("hidden"); openDm(data.username); }));
+  } else if(data.friendStatus === "pending_sent"){
+    const span=document.createElement("span"); span.style.cssText="color:#aaa;font-size:13px;";
+    span.textContent="İstek gönderildi, bekleniyor..."; profileActions.appendChild(span);
+  } else if(data.friendStatus === "pending_received"){
+    profileActions.appendChild(makeActionBtn("✅ İsteği Kabul Et", ()=>{
+      socket.send(JSON.stringify({type:"respond_friend_request", username:data.username, accept:true}));
+      profileModal.classList.add("hidden");
+    }));
+  } else if(data.friendStatus === "none"){
+    if(!loggedInUsername){
+      const span=document.createElement("span"); span.style.cssText="color:#aaa;font-size:13px;";
+      span.textContent="Arkadaş eklemek için giriş yapmalısın."; profileActions.appendChild(span);
+    } else {
+      profileActions.appendChild(makeActionBtn("➕ Arkadaş Ekle", ()=>{
+        socket.send(JSON.stringify({type:"send_friend_request", username:data.username}));
+      }));
+    }
+  }
+}
+
+/* --- Arkadaslik --- */
+function handleFriendRequestReceived(data){
+  showAccountMsg(`${data.from} sana arkadaşlık isteği gönderdi! Hesabım panelinden kabul edebilirsin.`, "success");
+  if(socket && socket.readyState===WebSocket.OPEN) socket.send(JSON.stringify({type:"list_friends"}));
+}
+function handleFriendAccepted(data){
+  showAccountMsg(`${data.username} ile artık arkadaşsınız!`, "success");
+  if(socket && socket.readyState===WebSocket.OPEN) socket.send(JSON.stringify({type:"list_friends"}));
+}
+function renderFriendsList(data){
+  const pendingList = document.getElementById("pendingFriendList");
+  const friendsListEl = document.getElementById("friendsList");
+  pendingList.innerHTML = "";
+  if(!data.pendingIncoming || data.pendingIncoming.length===0){
+    pendingList.innerHTML = '<li class="chatEmpty">Yok</li>';
+  } else {
+    data.pendingIncoming.forEach(name=>{
+      const li=document.createElement("li");
+      const span=document.createElement("span"); span.textContent=name;
+      const btnWrap=document.createElement("span");
+      const acceptBtn=document.createElement("button"); acceptBtn.textContent="Kabul";
+      acceptBtn.addEventListener("click", ()=>socket.send(JSON.stringify({type:"respond_friend_request", username:name, accept:true})));
+      const declineBtn=document.createElement("button"); declineBtn.textContent="Reddet"; declineBtn.className="declineBtn";
+      declineBtn.addEventListener("click", ()=>socket.send(JSON.stringify({type:"respond_friend_request", username:name, accept:false})));
+      btnWrap.appendChild(acceptBtn); btnWrap.appendChild(declineBtn);
+      li.appendChild(span); li.appendChild(btnWrap);
+      pendingList.appendChild(li);
+    });
+  }
+  friendsListEl.innerHTML = "";
+  if(!data.friends || data.friends.length===0){
+    friendsListEl.innerHTML = '<li class="chatEmpty">Henüz arkadaşın yok</li>';
+  } else {
+    data.friends.forEach(f=>{
+      const li=document.createElement("li");
+      const span=document.createElement("span"); span.textContent = f.username + (f.online?" 🟢":"");
+      const dmBtn=document.createElement("button"); dmBtn.textContent="DM";
+      dmBtn.addEventListener("click", ()=>{ authPanel.classList.add("hidden"); openDm(f.username); });
+      li.appendChild(span); li.appendChild(dmBtn);
+      friendsListEl.appendChild(li);
+    });
+  }
+}
+
+/* --- DM (ozel mesaj) - kalici degil, sadece anlik iletiliyor --- */
+const dmPanel = document.getElementById("dmPanel");
+const dmMessages = document.getElementById("dmMessages");
+const dmWithName = document.getElementById("dmWithName");
+const dmTextInput = document.getElementById("dmTextInput");
+let currentDmWith = null;
+
+function openDm(username){
+  currentDmWith = username;
+  dmWithName.textContent = username;
+  dmMessages.innerHTML = "";
+  dmPanel.classList.remove("hidden");
+}
+document.getElementById("closeDmBtn").addEventListener("click", ()=>dmPanel.classList.add("hidden"));
+function addDmLine(who, text){
+  const li=document.createElement("li");
+  const nameSpan=document.createElement("span");
+  nameSpan.className = who===loggedInUsername ? "dmSelf" : "";
+  nameSpan.textContent = who+": ";
+  li.appendChild(nameSpan);
+  li.appendChild(document.createTextNode(text));
+  dmMessages.appendChild(li);
+  dmMessages.scrollTop = dmMessages.scrollHeight;
+}
+function sendDm(){
+  const text = dmTextInput.value.trim();
+  if(!text || !currentDmWith) return;
+  if(!(socket && socket.readyState===WebSocket.OPEN)) return;
+  socket.send(JSON.stringify({type:"send_dm", to:currentDmWith, text}));
+  dmTextInput.value = "";
+}
+document.getElementById("dmSendBtn").addEventListener("click", sendDm);
+dmTextInput.addEventListener("keydown", e=>{ if(e.key==="Enter") sendDm(); });
+function handleIncomingDm(data){
+  if(data.self){
+    if(currentDmWith===data.to) addDmLine(loggedInUsername, data.text);
+  } else {
+    if(currentDmWith===data.from && !dmPanel.classList.contains("hidden")){
+      addDmLine(data.from, data.text);
+    } else {
+      showAccountMsg(`${data.from} sana DM gönderdi: "${data.text}"`, "success");
+      authPanel.classList.remove("hidden");
+    }
+  }
+}
+function handleDmError(data){ showAccountMsg(data.reason, "error"); }
+
+/* --- Klan --- */
+const clanPanel = document.getElementById("clanPanel");
+const noClanView = document.getElementById("noClanView");
+const myClanView = document.getElementById("myClanView");
+let myClanData = null;
+
+document.getElementById("clanMenuBtn").addEventListener("click", ()=>{
+  clanPanel.classList.remove("hidden");
+  if(!loggedInUsername){
+    showClanMsg("Klan kurmak/katılmak için giriş yapmalısın, ama mevcut klanlara göz atabilirsin.");
+  }
+  if(socket && socket.readyState===WebSocket.OPEN) socket.send(JSON.stringify({type:"list_clans"}));
+});
+document.getElementById("closeClanBtn").addEventListener("click", ()=>clanPanel.classList.add("hidden"));
+
+function showClanMsg(text){
+  // Basit: tarayici konsoluna degil, ust kisimda kisa bir uyari olarak goster
+  let el = document.getElementById("clanMsgLine");
+  if(!el){
+    el = document.createElement("div");
+    el.id = "clanMsgLine";
+    el.style.cssText = "color:#ff8080;font-size:12.5px;margin-bottom:10px;";
+    document.getElementById("clanPanelInner").insertBefore(el, noClanView);
+  }
+  el.textContent = text || "";
+}
+
+document.getElementById("createClanForm").addEventListener("submit", e=>{
+  e.preventDefault();
+  if(!loggedInUsername){ showClanMsg("Önce giriş yapmalısın."); return; }
+  const name = document.getElementById("clanNameInput").value.trim();
+  const description = document.getElementById("clanDescInput").value.trim();
+  if(!name) return;
+  socket.send(JSON.stringify({type:"create_clan", name, description}));
+});
+
+function renderClansList(data){
+  const list = document.getElementById("clansBrowseList");
+  list.innerHTML = "";
+  if(!data.clans || data.clans.length===0){
+    list.innerHTML = '<li class="chatEmpty">Henüz klan yok, ilk kuran sen ol!</li>';
+    return;
+  }
+  data.clans.forEach(c=>{
+    const li=document.createElement("li");
+    const span=document.createElement("span"); span.textContent = `${c.name} (${c.memberCount} üye)`;
+    li.appendChild(span);
+    if(loggedInUsername){
+      const joinBtn=document.createElement("button"); joinBtn.textContent="Katıl";
+      joinBtn.addEventListener("click", ()=>socket.send(JSON.stringify({type:"join_clan", name:c.name})));
+      li.appendChild(joinBtn);
+    }
+    list.appendChild(li);
+  });
+}
+
+function handleMyClan(data){
+  myClanData = data.clan;
+  if(!data.clan){
+    noClanView.classList.remove("hidden");
+    myClanView.classList.add("hidden");
+    return;
+  }
+  noClanView.classList.add("hidden");
+  myClanView.classList.remove("hidden");
+  document.getElementById("myClanName").textContent = data.clan.name;
+  document.getElementById("myClanDesc").textContent = data.clan.description || "";
+  const photoEl = document.getElementById("myClanPhoto");
+  if(data.clan.photo_data){ photoEl.style.backgroundImage = `url(${data.clan.photo_data})`; photoEl.textContent=""; }
+  else { photoEl.style.backgroundImage=""; photoEl.textContent="+"; }
+
+  const isOwner = loggedInUsername && data.clan.owner === loggedInUsername;
+  document.getElementById("myClanOwnerTools").classList.toggle("hidden", !isOwner);
+
+  const membersList = document.getElementById("clanMembersList");
+  membersList.innerHTML = "";
+  data.clan.members.forEach(m=>{
+    const li=document.createElement("li");
+    const span=document.createElement("span");
+    span.textContent = `${m.role==="owner"?"👑 ":""}${m.username}${m.online?" 🟢":""}`;
+    li.appendChild(span);
+    if(isOwner && m.username !== loggedInUsername){
+      const kickBtn=document.createElement("button"); kickBtn.textContent="Çıkar";
+      kickBtn.addEventListener("click", ()=>socket.send(JSON.stringify({type:"kick_clan_member", username:m.username})));
+      li.appendChild(kickBtn);
+    }
+    membersList.appendChild(li);
+  });
+
+  const clanChatEl = document.getElementById("clanChatMessages");
+  clanChatEl.innerHTML = "";
+  (data.chatHistory||[]).forEach(addClanChatMessage);
+}
+
+function addClanChatMessage(msg){
+  const el = document.getElementById("clanChatMessages");
+  const li=document.createElement("li");
+  const nameSpan=document.createElement("span");
+  nameSpan.style.fontWeight="bold"; nameSpan.style.color = msg.system ? "#aaa" : "#FFD700";
+  nameSpan.textContent = msg.name+": ";
+  li.appendChild(nameSpan);
+  li.appendChild(document.createTextNode(msg.text));
+  el.appendChild(li);
+  el.scrollTop = el.scrollHeight;
+}
+
+document.getElementById("myClanPhoto").addEventListener("click", ()=>{
+  if(!myClanData || loggedInUsername!==myClanData.owner) return;
+  document.getElementById("clanPhotoFileInput").click();
+});
+document.getElementById("clanPhotoFileInput").addEventListener("change", ()=>{
+  const file = document.getElementById("clanPhotoFileInput").files[0];
+  if(!file) return;
+  fileToResizedDataUri(file, 128, dataUri=>{
+    socket.send(JSON.stringify({type:"update_clan", photo_data:dataUri}));
+  });
+});
+document.getElementById("clanDescSaveBtn").addEventListener("click", ()=>{
+  const description = document.getElementById("clanDescEditInput").value.trim();
+  socket.send(JSON.stringify({type:"update_clan", description}));
+});
+document.getElementById("leaveClanBtn").addEventListener("click", ()=>{
+  socket.send(JSON.stringify({type:"leave_clan"}));
+});
+function sendClanChat(){
+  const input = document.getElementById("clanChatTextInput");
+  const text = input.value.trim();
+  if(!text) return;
+  socket.send(JSON.stringify({type:"clan_chat", text}));
+  input.value = "";
+}
+document.getElementById("clanChatSendBtn").addEventListener("click", sendClanChat);
+document.getElementById("clanChatTextInput").addEventListener("keydown", e=>{ if(e.key==="Enter") sendClanChat(); });
 document.getElementById("closeAuthBtn").addEventListener("click", ()=>{
   authPanel.classList.add("hidden");
 });
