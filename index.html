@@ -375,6 +375,106 @@
   }
   #chatRulesAcceptBtn:disabled { background:#555; color:#999; cursor:not-allowed; }
 
+
+  /* ===== PixelPlanet tarzı: keskin, düz, açık/koyu tema ===== */
+  :root{--win-bg:#f4f4f4;--win-fg:#111;--win-border:#000;--bar-bg:#d8d8d8;--btn-bg:#e2e2e2;--btn-fg:#000;--input-bg:#fff;--name-bg:#e6eaff;--name-fg:#262668;--muted:#666;--link:#0a58ca;--row-bg:#e6e6e6}
+  :root[data-theme="dark"]{--win-bg:#1b1b1b;--win-fg:#e6e6e6;--win-border:#777;--bar-bg:#2c2c2c;--btn-bg:#333;--btn-fg:#eee;--input-bg:#101010;--name-bg:#262a44;--name-fg:#b8c0ff;--muted:#999;--link:#7ecbff;--row-bg:#262626}
+  #authPanelInner,#announcePanelInner,#chatPanelInner,#profileModalInner,#dmPanelInner,#clanPanelInner,#chatRulesInner{
+    background:var(--win-bg);color:var(--win-fg);border:1px solid var(--win-border);border-radius:0;box-shadow:none}
+  #authPanelInner h2,#announcePanelInner h2,#dmPanelInner h2,#clanPanelInner h2,#chatRulesInner h2,#accountView h2{
+    background:var(--bar-bg);color:var(--win-fg);border:1px solid var(--win-border);border-radius:0;padding:6px 8px;font-size:16px;margin:0 0 10px 0}
+  #announceList li{color:var(--win-fg);border-bottom:1px solid var(--win-border)}
+  #announceList li .announceDate,.accountSectionTitle,#authSubtitle,#avatarUploadHint,#myClanDesc,.clanChatHint{color:var(--muted)}
+  .clanChatHint{font-size:12.5px;margin:10px 0}
+  #pendingFriendList li,#friendsList li,#clansBrowseList li,#clanMembersList li{background:var(--row-bg);color:var(--win-fg);border-radius:0}
+  #profileUsername,#profileBio,#myClanName,#dmMessages li,#chatRulesInner li,#chatRulesAgreeRow{color:var(--win-fg)}
+  #profileClanTag,.coordLink{color:var(--link)}
+  #chatRulesInner .warnBox{border-radius:0}
+  #authMsg.error{color:#b00020} #authMsg.success{color:#0a7a2f}
+  #authForm input,#accountView textarea,#accountView input,#clanPanelInner input,#dmTextInput,#chatTextInput{
+    background:var(--input-bg);color:var(--win-fg);border:1px solid var(--win-border);border-radius:0}
+  #authSubmitBtn,#saveProfileBtn,#accountLogoutBtn,#leaveClanBtn,#clanDescSaveBtn,#chatSendBtn,#dmSendBtn,#createClanForm button,
+  #closeAuthBtn,#closeAnnounceBtn,#closeDmBtn,#closeClanBtn,#closeProfileBtn,.profileActionBtn,#chatRulesAcceptBtn,.authTab,
+  #pendingFriendList li button,#friendsList li button,#clansBrowseList li button,#clanMembersList li button{
+    background:var(--btn-bg);color:var(--btn-fg);border:1px solid var(--win-border);border-radius:0;font-weight:bold}
+  .authTab.active{background:var(--win-fg);color:var(--win-bg)}
+  #authSubmitBtn:disabled,#chatSendBtn:disabled,#chatRulesAcceptBtn:disabled{opacity:.5}
+  .chatAvatar,#myAvatarPreview,#profileAvatarBig,#myClanPhoto{border-radius:0}
+  #playBtn,#authBtn,#announceBtn,#chatBtn,#clanMenuBtn,#menuThemeBtn{border-radius:2px}
+  #menuThemeBtn{position:fixed;bottom:24px;left:20px;z-index:101;background:#333;color:#ddd;border:1px solid #444;padding:10px 14px;font-size:13px;font-weight:bold;cursor:pointer}
+
+  /* --- Sohbet penceresi --- */
+  #chatPanel{padding:8px}
+  #chatPanelInner{padding:0;max-width:480px;height:84vh;max-height:84vh;display:flex;flex-direction:column;overflow:hidden}
+  #chatHeader{display:flex;gap:4px;padding:4px;flex-shrink:0}
+  #chatTitle{flex:1;min-width:0;background:var(--bar-bg);border:1px solid var(--win-border);padding:6px 8px;font-size:16px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  #chatOnline{font-size:12px;color:var(--muted);margin-left:6px}
+  #chatThemeBtn,#closeChatBtn{background:var(--btn-bg);color:var(--btn-fg);border:1px solid var(--win-border);border-radius:0;width:40px;font-size:20px;cursor:pointer;margin:0;padding:0;align-self:stretch}
+  #chatMessages{flex:1;min-height:0;margin:0;padding:6px 8px;gap:10px;overflow-y:auto;display:flex;flex-direction:column;list-style:none}
+  #chatMessages li{display:flex;gap:8px;align-items:flex-start;color:var(--win-fg);font-size:15px}
+  #chatMessages .chatEmpty{display:block;color:var(--muted);text-align:center;margin-top:20px}
+  .chatAvatar{width:34px;height:34px;font-size:14px;margin:0;flex-shrink:0;background:#bbb;color:#333;display:flex;align-items:center;justify-content:center}
+  .chatBody{flex:1;min-width:0}
+  .chatMeta{display:flex;justify-content:space-between;align-items:baseline;gap:8px}
+  #chatMessages li .chatName{background:var(--name-bg);color:var(--name-fg);padding:1px 6px;font-weight:normal;margin:0;cursor:pointer}
+  .chatTime{font-size:12px;color:var(--muted);flex-shrink:0}
+  .chatText{word-break:break-word;margin-top:2px}
+  #chatInputRow{display:flex;gap:4px;padding:4px;flex-shrink:0;margin:0}
+  #chatTextInput{flex:1;min-width:0;padding:8px;font-size:15px}
+  #chatSendBtn{padding:8px 14px}
+  #chatFooter{display:flex;justify-content:space-between;align-items:center;padding:4px;flex-shrink:0;border-top:1px solid var(--win-border);position:relative}
+  #chatFooterNote{font-size:14px;color:var(--link)}
+  #channelPickerBtn{background:var(--btn-bg);color:var(--btn-fg);border:1px solid var(--win-border);border-radius:0;padding:5px 16px;font-family:monospace;font-size:15px;cursor:pointer}
+  #channelPickerList{position:absolute;right:4px;bottom:100%;background:var(--win-bg);border:1px solid var(--win-border);display:flex;flex-direction:column;min-width:160px;z-index:5}
+  .channelItem{background:transparent;color:var(--win-fg);border:0;border-bottom:1px solid var(--bar-bg);text-align:left;padding:9px 10px;font-family:monospace;font-size:16px;cursor:pointer}
+  .channelItem.active{background:var(--bar-bg);font-weight:bold}
+
+
+  /* ===== PixelPlanet tarzı HUD / menü / pencere ===== */
+  *{border-radius:0 !important}
+  .spinner,.chatBadge{border-radius:50% !important}
+  #topLeftBar,#fitBtn,#onlineBadge,#coordBox,#cooldown,#inGameChatBtn{background:var(--btn-bg);color:var(--btn-fg);border:1px solid var(--win-border);box-shadow:none}
+  #topLeftBar{cursor:default;padding:3px 8px 3px 3px;gap:6px}
+  #gameMenuBtn{width:30px;height:28px;font-size:18px;cursor:pointer;padding:0;line-height:1;background:var(--btn-bg);color:var(--btn-fg);border:1px solid var(--win-border)}
+  #founderText{color:var(--btn-fg);font-size:13px}
+  #onlineBadge,#coordBox{font-size:16px;padding:6px 10px}
+  #bottomLeftInfo{position:fixed;left:10px;bottom:80px;z-index:10;display:flex;flex-direction:column;gap:6px;align-items:flex-start;pointer-events:none}
+  #bottomLeftInfo>*{pointer-events:auto}
+  #cooldown.cdReady{color:#0a7a2f} #cooldown.cdWait{color:#b00020}
+  :root[data-theme="dark"] #cooldown.cdReady{color:#5fe38a} :root[data-theme="dark"] #cooldown.cdWait{color:#ff7b7b}
+  #inGameChatBtn{padding:5px 10px;cursor:pointer}
+  #palette{background:var(--bar-bg);border-top:1px solid var(--win-border)}
+  #confirmBar{background:var(--win-bg);border:1px solid var(--win-border);box-shadow:none}
+  #confirmBtn{background:#2ecc71;color:#000;border:1px solid #000}
+  #cancelBtn{background:var(--btn-bg);color:var(--btn-fg);border:1px solid var(--win-border)}
+  #confirmSwatch{border:1px solid #000}
+  #coordToast{background:var(--win-bg);color:var(--win-fg);border:1px solid var(--win-border)}
+  #loadingMsg{background:var(--win-bg);color:var(--win-fg);border:1px solid var(--win-border);box-shadow:none}
+  #gameMenu{position:fixed;top:48px;left:10px;z-index:12;background:var(--win-bg);border:1px solid var(--win-border);display:flex;flex-direction:column;min-width:210px}
+  #gameMenu button{background:transparent;color:var(--win-fg);border:0;border-bottom:1px solid var(--bar-bg);text-align:left;padding:10px 12px;font-size:15px;cursor:pointer;font-family:Arial,sans-serif}
+  #gameMenu button:hover{background:var(--bar-bg)}
+  #mainMenu{background:var(--win-bg);color:var(--win-fg)}
+  #menuTitle{color:var(--win-fg)} #menuSubtitle{color:var(--muted)} #menuOnline{color:var(--link)}
+  #loggedInBar{color:var(--win-fg)} #loggedInBar button{color:var(--link)}
+  #authBtn,#announceBtn,#chatBtn,#clanMenuBtn,#menuThemeBtn{background:var(--btn-bg);color:var(--btn-fg);border:1px solid var(--win-border)}
+  #playBtn{background:#2ecc71;color:#000;border:1px solid #000;box-shadow:none}
+  #authPanel,#announcePanel,#chatPanel,#chatRules,#profileModal,#dmPanel,#clanPanel,#settingsPanel,#helpPanel{background:rgba(0,0,0,.4)}
+  #settingsPanel,#helpPanel{position:fixed;inset:0;z-index:130;display:flex;align-items:center;justify-content:center;padding:24px;box-sizing:border-box}
+  #settingsPanelInner,#helpPanelInner{background:var(--win-bg);color:var(--win-fg);border:1px solid var(--win-border);padding:18px 20px;max-width:420px;width:100%;box-sizing:border-box;font-family:Arial,sans-serif}
+  #settingsPanelInner h2,#helpPanelInner h2{background:var(--bar-bg);border:1px solid var(--win-border);padding:6px 8px;font-size:16px;margin:0 0 10px 0}
+  .setRow{display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--bar-bg);font-size:14px}
+  .setRow button,#closeSettingsBtn,#closeHelpBtn,#authSwitchBtn{background:var(--btn-bg);color:var(--btn-fg);border:1px solid var(--win-border);padding:6px 16px;font-weight:bold;cursor:pointer}
+  #closeSettingsBtn,#closeHelpBtn{margin-top:12px}
+  #helpPanelInner ul{margin:0;padding-left:18px} #helpPanelInner li{font-size:13.5px;line-height:1.6;margin-bottom:6px}
+  #authPanelInner{max-width:560px}
+  #authFormSection{text-align:center}
+  #authFormSection h3{font-size:22px;margin:14px 0 10px 0;color:var(--muted)}
+  #authForm{max-width:360px;margin:0 auto}
+  #authForm input{margin-bottom:4px}
+  #authSubmitBtn{width:auto;padding:6px 20px;margin-top:10px}
+  #authSwitchBtn{padding:6px 20px}
+  @media (max-width:480px){ #founderText{display:none} }
+
   /* Mobilde butonları büyüt */
   @media (max-width: 768px) {
     .color {
@@ -420,6 +520,7 @@
 </div>
 <div id="topBar" class="hud hidden">
   <div id="topLeftBar">
+    <button id="gameMenuBtn" type="button" title="Menü">⌄</button>
     <img id="gameLogo" src="placeturk-logo.jpg" alt="PixelTur V2">
     <span id="founderText">PixelTur V2</span>
   </div>
@@ -429,9 +530,21 @@
   </button>
   <div id="topRightGroup">
     <button id="inGameChatBtn">💬<span class="chatBadge hidden"></span></button>
-    <div id="onlineBadge">🟢 -</div>
-    <div id="cooldown">Hazır!</div>
+    <div id="cooldown" class="cdReady">Hazır!</div>
   </div>
+</div>
+<div id="gameMenu" class="hidden">
+  <button type="button" data-action="home">🏠 Ana Menü</button>
+  <button type="button" data-action="account">👤 Giriş yap / Hesabım</button>
+  <button type="button" data-action="clans">🛡️ Klanlar</button>
+  <button type="button" data-action="chat">💬 Sohbet</button>
+  <button type="button" data-action="announce">📢 Duyurular</button>
+  <button type="button" data-action="settings">⚙ Ayarlar</button>
+  <button type="button" data-action="help">? Yardım</button>
+</div>
+<div id="bottomLeftInfo" class="hud hidden">
+  <div id="onlineBadge">🟢 -</div>
+  <div id="coordBox">(-, -)</div>
 </div>
 <div id="palette" class="hud hidden"></div>
 <div id="confirmBar">
@@ -450,6 +563,7 @@
   <button id="authBtn">👤 Giriş Yap / Kayıt Ol</button>
   <button id="announceBtn">📢 Duyurular</button>
   <button id="chatBtn">💬 Sohbet<span class="chatBadge hidden"></span></button>
+  <button id="menuThemeBtn" type="button">◐ Tema</button>
   <button id="clanMenuBtn">🛡️ Klanlar</button>
   <button id="playBtn">Oyuna Başla</button>
 </div>
@@ -457,17 +571,16 @@
 <div id="authPanel" class="hidden">
   <div id="authPanelInner">
     <div id="authFormSection">
-      <h2>👤 Hesap</h2>
-      <p id="authSubtitle">Kayıt olman zorunlu değil, ama ismini kimsenin çalamamasını istersen önerilir.</p>
-      <div id="authTabs">
-        <button type="button" class="authTab active" data-mode="login">Giriş Yap</button>
-        <button type="button" class="authTab" data-mode="register">Kayıt Ol</button>
-      </div>
+      <h2>Kullanıcı Alanı</h2>
+      <p id="authSubtitle">Sohbet, arkadaşlık ve klanlar için giriş yapın.</p>
+      <h3 id="authHeading">Kullanıcı adı ile giriş yap:</h3>
       <form id="authForm">
-        <input id="authUsername" type="text" maxlength="20" placeholder="Kullanıcı adı" autocomplete="username" required>
-        <input id="authPassword" type="password" maxlength="72" placeholder="Şifre (en az 6 karakter)" autocomplete="current-password" required>
+        <input id="authUsername" type="text" maxlength="20" placeholder="Kullanıcı Adı" autocomplete="username" required>
+        <input id="authPassword" type="password" maxlength="72" placeholder="Parola (en az 6 karakter)" autocomplete="current-password" required>
         <button type="submit" id="authSubmitBtn">Giriş Yap</button>
       </form>
+      <h3 id="authAltText">veya buradan kayıt ol:</h3>
+      <button type="button" id="authSwitchBtn">Kayıt Ol</button>
     </div>
 
     <div id="accountView" class="hidden">
@@ -491,6 +604,30 @@
 
     <div id="authMsg"></div>
     <button id="closeAuthBtn">Kapat</button>
+  </div>
+</div>
+
+<div id="settingsPanel" class="hidden">
+  <div id="settingsPanelInner">
+    <h2>Ayarlar</h2>
+    <div class="setRow"><span>Tema</span><button id="setThemeBtn" type="button"></button></div>
+    <div class="setRow"><span>Ses bildirimi (cooldown)</span><button id="setSoundBtn" type="button"></button></div>
+    <div class="setRow"><span>Titreşim</span><button id="setVibBtn" type="button"></button></div>
+    <button id="closeSettingsBtn" type="button">Kapat</button>
+  </div>
+</div>
+
+<div id="helpPanel" class="hidden">
+  <div id="helpPanelInner">
+    <h2>Yardım</h2>
+    <ul>
+      <li>Tahtaya <b>dokun/tıkla</b>: hücre seçilir, <b>Yerleştir</b> ile boyarsın.</li>
+      <li><b>Sürükle</b>: kaydır. <b>Tekerlek / iki parmak</b>: yakınlaştır.</li>
+      <li>Hücreye <b>çift tıkla/dokun</b>: koordinatı kopyalar. Sohbete yapıştırırsan tıklayan herkes oraya gider.</li>
+      <li>Sohbette bir <b>isme tıkla</b>: profil, arkadaş ekleme ve DM.</li>
+      <li>Sohbet kanalları sağ alttaki seçiciden değişir; klana girince <b>#klan</b> kanalı açılır.</li>
+    </ul>
+    <button id="closeHelpBtn" type="button">Kapat</button>
   </div>
 </div>
 
@@ -546,12 +683,7 @@
       </div>
       <h3 class="accountSectionTitle">Üyeler</h3>
       <ul id="clanMembersList"></ul>
-      <h3 class="accountSectionTitle">Klan Sohbeti</h3>
-      <ul id="clanChatMessages"></ul>
-      <div id="clanChatInputRow">
-        <input id="clanChatTextInput" type="text" maxlength="200" placeholder="Klana yaz...">
-        <button id="clanChatSendBtn">Gönder</button>
-      </div>
+      <p class="clanChatHint">Klan sohbeti için ana menüdeki <b>Sohbet</b> butonundan <b>#klan</b> kanalını seç.</p>
       <button id="leaveClanBtn" type="button">Klandan Ayrıl</button>
     </div>
 
@@ -569,20 +701,30 @@
 
 <div id="chatPanel" class="hidden">
   <div id="chatPanelInner">
-    <h2>💬 Sohbet <span id="chatOnline"></span></h2>
-    <div id="channelTabs">
-      <button type="button" class="channelTab active" data-channel="tr">TR</button>
-      <button type="button" class="channelTab" data-channel="int">INT</button>
-      <button type="button" class="channelTab" data-channel="europe">Avrupa</button>
-      <button type="button" class="channelTab" data-channel="asia">Asya</button>
-      <button type="button" class="channelTab" data-channel="america">Amerika</button>
+    <div id="chatHeader">
+      <div id="chatTitle">Sohbet - Kanal: <span id="chatChannelLabel">tr</span> <span id="chatOnline"></span></div>
+      <button id="chatThemeBtn" type="button" title="Açık/Koyu tema">◐</button>
+      <button id="closeChatBtn" type="button">X</button>
     </div>
     <ul id="chatMessages"><li class="chatEmpty">Henüz mesaj yok, ilk yazan sen ol!</li></ul>
     <div id="chatInputRow">
       <input id="chatTextInput" type="text" maxlength="200" placeholder="Bir şeyler yaz...">
       <button id="chatSendBtn">Gönder</button>
     </div>
-    <button id="closeChatBtn">Kapat</button>
+    <div id="chatFooter">
+      <span id="chatFooterNote"></span>
+      <div id="channelPicker">
+        <div id="channelPickerList" class="hidden">
+          <button type="button" class="channelItem active" data-channel="tr"># tr</button>
+          <button type="button" class="channelItem" data-channel="int"># int</button>
+          <button type="button" class="channelItem" data-channel="asia"># asia</button>
+          <button type="button" class="channelItem" data-channel="europe"># europe</button>
+          <button type="button" class="channelItem" data-channel="america"># america</button>
+          <button type="button" class="channelItem hidden" id="clanChannelItem" data-channel="clan"># klan</button>
+        </div>
+        <button id="channelPickerBtn" type="button">tr ▾</button>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -638,6 +780,7 @@ const cooldownDiv=document.getElementById("cooldown");
 /* Ses + titreşim: tarayıcılar AudioContext'i ancak bir kullanıcı
    etkileşiminden sonra çalıştırmaya izin veriyor, o yüzden ilk
    dokunuşta/tıklamada sessizce hazırlıyoruz. */
+const settings={sound:localStorage.getItem("pt_sound")!=="0", vibrate:localStorage.getItem("pt_vib")!=="0"};
 let audioCtx=null;
 function unlockAudio(){
   if(!audioCtx){
@@ -648,8 +791,8 @@ function unlockAudio(){
 document.addEventListener("pointerdown", unlockAudio);
 
 function notifyCooldownReady(){
-  if(navigator.vibrate) navigator.vibrate(150);
-  if(audioCtx){
+  if(settings.vibrate && navigator.vibrate) navigator.vibrate(150);
+  if(settings.sound && audioCtx){
     try{
       const osc=audioCtx.createOscillator();
       const gain=audioCtx.createGain();
@@ -667,11 +810,11 @@ function startCooldown(){
   if(confirmBtn) confirmBtn.disabled=true;
   const timer=setInterval(()=>{
     t--; if(t<=0){clearInterval(timer); canPlace=true;
-      cooldownDiv.textContent="Hazır!"; cooldownDiv.style.color="lime";
+      cooldownDiv.textContent="Hazır!"; cooldownDiv.className="cdReady";
       if(confirmBtn) confirmBtn.disabled=false;
       notifyCooldownReady();}
     else{cooldownDiv.textContent = t<60 ? `${t}s` : `${Math.floor(t/60)}:${String(t%60).padStart(2,"0")}`;
-      cooldownDiv.style.color="#ff4444";}
+      cooldownDiv.className="cdWait";}
   },1000);
 }
 
@@ -707,13 +850,13 @@ document.getElementById("playBtn").addEventListener("click", ()=>{
   if(!boardLoaded) loadingMsg.classList.remove("hidden");
 });
 
-/* Oyun icindeki kose logosuna basinca ana menuye geri don */
-document.getElementById("topLeftBar").addEventListener("click", ()=>{
+/* Oyun ici menuden "Ana Menu" secilince ana menuye geri don */
+function goHome(){
   document.querySelectorAll(".hud").forEach(el=>el.classList.add("hidden"));
   loadingMsg.classList.add("hidden");
   if(typeof clearSelection==="function") clearSelection();
   mainMenu.classList.remove("hidden");
-});
+}
 
 /* Duyurular: ayrı, kara bir sekme/panel olarak açılıp kapanıyor */
 const announcePanel = document.getElementById("announcePanel");
@@ -736,15 +879,30 @@ const chatTextInput = document.getElementById("chatTextInput");
 const chatSendBtn = document.getElementById("chatSendBtn");
 let chatCooldown = false;
 let currentChannel = "tr";
-const channelData = new Map(["tr","int","europe","asia","america"].map(c=>[c,[]]));
+const channelData = new Map(["tr","int","europe","asia","america","clan"].map(c=>[c,[]]));
 
-document.querySelectorAll(".channelTab").forEach(tab=>{
-  tab.addEventListener("click", ()=>{
-    document.querySelectorAll(".channelTab").forEach(t=>t.classList.toggle("active", t===tab));
-    currentChannel = tab.dataset.channel;
-    renderChannelMessages();
-  });
-});
+const CHANNEL_LABELS={tr:"tr",int:"int",asia:"asia",europe:"europe",america:"america",clan:"klan"};
+const channelPickerBtn=document.getElementById("channelPickerBtn");
+const channelPickerList=document.getElementById("channelPickerList");
+const chatChannelLabel=document.getElementById("chatChannelLabel");
+function setChannel(ch){
+  currentChannel=ch;
+  const label=CHANNEL_LABELS[ch]||ch;
+  chatChannelLabel.textContent=label;
+  channelPickerBtn.textContent=label+" ▾";
+  document.querySelectorAll(".channelItem").forEach(i=>i.classList.toggle("active", i.dataset.channel===ch));
+  channelPickerList.classList.add("hidden");
+  renderChannelMessages();
+}
+document.querySelectorAll(".channelItem").forEach(item=>item.addEventListener("click",()=>setChannel(item.dataset.channel)));
+channelPickerBtn.addEventListener("click",()=>channelPickerList.classList.toggle("hidden"));
+
+/* Acik/koyu tema */
+function applyTheme(t){document.documentElement.dataset.theme=t;localStorage.setItem("placeturk_theme",t);}
+applyTheme(localStorage.getItem("placeturk_theme")||"light");
+function toggleTheme(){applyTheme(document.documentElement.dataset.theme==="dark"?"light":"dark");}
+document.getElementById("chatThemeBtn").addEventListener("click",toggleTheme);
+document.getElementById("menuThemeBtn").addEventListener("click",toggleTheme);
 
 function renderChannelMessages(){
   chatMessages.innerHTML = "";
@@ -780,6 +938,7 @@ function openChatPanel(){
   }
   unreadChat = 0;
   updateChatBadge();
+  document.getElementById("chatFooterNote").textContent = loggedInUsername || "";
 }
 
 /* Sohbet kuralları: kabul edilmeden sohbet paneli açılmıyor.
@@ -857,25 +1016,31 @@ function applyAvatarToSpan(span, dataUri){
   }
 }
 
+function fmtTime(ts){ return new Date(ts||Date.now()).toLocaleTimeString("tr-TR",{hour12:false}); }
 function appendMessageToDOM(msg){
   const li = document.createElement("li");
   if(msg.id!==undefined) li.dataset.id = msg.id;
+  const avatarSpan = document.createElement("span");
+  avatarSpan.className = "chatAvatar";
   if(!msg.system){
-    const avatarSpan = document.createElement("span");
-    avatarSpan.className = "chatAvatar";
     avatarSpan.textContent = (msg.name||"?").charAt(0).toUpperCase();
-    li.appendChild(avatarSpan);
     requestAvatarFor(msg.name, avatarSpan);
-  }
+  } else avatarSpan.textContent = "!";
+  li.appendChild(avatarSpan);
+  const body = document.createElement("div"); body.className = "chatBody";
+  const meta = document.createElement("div"); meta.className = "chatMeta";
   const nameSpan = document.createElement("span");
   nameSpan.className = "chatName";
-  nameSpan.textContent = (msg.name || "Misafir") + ":";
-  if(!msg.system){
-    nameSpan.style.cursor = "pointer";
-    nameSpan.addEventListener("click", ()=>openProfile(msg.name));
-  }
-  li.appendChild(nameSpan);
-  renderMessageText(li, " " + msg.text);
+  nameSpan.textContent = msg.name || "Misafir";
+  if(!msg.system) nameSpan.addEventListener("click", ()=>openProfile(msg.name));
+  else nameSpan.style.cursor = "default";
+  const timeSpan = document.createElement("span");
+  timeSpan.className = "chatTime"; timeSpan.textContent = fmtTime(msg.ts);
+  meta.appendChild(nameSpan); meta.appendChild(timeSpan);
+  const textDiv = document.createElement("div"); textDiv.className = "chatText";
+  renderMessageText(textDiv, msg.text);
+  body.appendChild(meta); body.appendChild(textDiv);
+  li.appendChild(body);
   chatMessages.appendChild(li);
   while(chatMessages.children.length > 100) chatMessages.removeChild(chatMessages.firstChild);
 }
@@ -914,7 +1079,7 @@ function removeChatMessage(id, channel){
 }
 
 function clearChat(){
-  channelData.forEach((v,k)=>channelData.set(k, []));
+  channelData.forEach((v,k)=>{ if(k!=="clan") channelData.set(k, []); });
   renderChannelMessages();
 }
 
@@ -938,7 +1103,8 @@ function sendChat(){
     openChatPanel(); // oturum dusmus olabilir, hesap paneline yonlendir
     return;
   }
-  socket.send(JSON.stringify({type:"chat", text:text.slice(0,200), channel:currentChannel}));
+  if(currentChannel==="clan") socket.send(JSON.stringify({type:"clan_chat", text:text.slice(0,200)}));
+  else socket.send(JSON.stringify({type:"chat", text:text.slice(0,200), channel:currentChannel}));
   chatTextInput.value = "";
   chatCooldown = true;
   chatSendBtn.disabled = true;
@@ -984,12 +1150,13 @@ function setAuthMode(mode){
   authMode = mode;
   document.querySelectorAll(".authTab").forEach(t=>t.classList.toggle("active", t.dataset.mode===mode));
   authSubmitBtn.textContent = mode==="login" ? "Giriş Yap" : "Kayıt Ol";
+  document.getElementById("authHeading").textContent = mode==="login" ? "Kullanıcı adı ile giriş yap:" : "Yeni hesap oluştur:";
+  document.getElementById("authAltText").textContent = mode==="login" ? "veya buradan kayıt ol:" : "zaten hesabın var mı?";
+  document.getElementById("authSwitchBtn").textContent = mode==="login" ? "Kayıt Ol" : "Giriş Yap";
   authPassword.autocomplete = mode==="login" ? "current-password" : "new-password";
   authMsg.textContent = ""; authMsg.className = "";
 }
-document.querySelectorAll(".authTab").forEach(tab=>{
-  tab.addEventListener("click", ()=>setAuthMode(tab.dataset.mode));
-});
+document.getElementById("authSwitchBtn").addEventListener("click", ()=>setAuthMode(authMode==="login"?"register":"login"));
 
 const authFormSection = document.getElementById("authFormSection");
 const accountView = document.getElementById("accountView");
@@ -997,6 +1164,7 @@ const myAvatarPreview = document.getElementById("myAvatarPreview");
 const avatarFileInput = document.getElementById("avatarFileInput");
 const bioInput = document.getElementById("bioInput");
 let myAvatarData = null;
+let pendingSelfProfile = false;
 
 function updateLoggedInUI(){
   if(loggedInUsername){
@@ -1029,6 +1197,8 @@ authBtn.addEventListener("click", ()=>{
   authUsername.value = loggedInUsername || localStorage.getItem("placeturk_logged_in_as") || "";
   authPanel.classList.remove("hidden");
   if(loggedInUsername && socket && socket.readyState===WebSocket.OPEN){
+    pendingSelfProfile = true;
+    socket.send(JSON.stringify({type:"get_profile", username:loggedInUsername}));
     socket.send(JSON.stringify({type:"list_friends"}));
   }
 });
@@ -1074,7 +1244,12 @@ document.getElementById("saveProfileBtn").addEventListener("click", ()=>{
 });
 function handleProfileUpdated(){
   showAccountMsg("Profil kaydedildi!", "success");
-  myAvatarData = null; // bir sonraki acilista yeniden sunucudan cekilsin
+  if(myAvatarData && loggedInUsername){
+    const lower = loggedInUsername.toLocaleLowerCase("tr");
+    avatarCache.set(lower, myAvatarData);
+    document.querySelectorAll(`.chatAvatar[data-for="${lower}"]`).forEach(sp=>applyAvatarToSpan(sp, myAvatarData));
+  }
+  myAvatarData = null;
 }
 
 document.getElementById("accountLogoutBtn").addEventListener("click", logout);
@@ -1106,6 +1281,14 @@ function makeActionBtn(label, onClick){
 }
 
 function renderProfile(data){
+  if(data.found && data.friendStatus==="self" && pendingSelfProfile){
+    pendingSelfProfile = false;
+    bioInput.value = data.bio || "";
+    if(data.avatar_data){ myAvatarPreview.style.backgroundImage = `url(${data.avatar_data})`; myAvatarPreview.textContent = ""; }
+    else { myAvatarPreview.style.backgroundImage = ""; myAvatarPreview.textContent = "+"; }
+    profileModal.classList.add("hidden");
+    return;
+  }
   if(!data.found){
     profileUsername.textContent = data.username || "Bulunamadı";
     profileBio.textContent = "Bu kullanıcı bulunamadı.";
@@ -1260,7 +1443,7 @@ function showClanMsg(text){
   if(!el){
     el = document.createElement("div");
     el.id = "clanMsgLine";
-    el.style.cssText = "color:#ff8080;font-size:12.5px;margin-bottom:10px;";
+    el.style.cssText = "color:#b00020;font-size:12.5px;margin-bottom:10px;";
     document.getElementById("clanPanelInner").insertBefore(el, noClanView);
   }
   el.textContent = text || "";
@@ -1297,6 +1480,16 @@ function renderClansList(data){
 
 function handleMyClan(data){
   myClanData = data.clan;
+  const clanItem = document.getElementById("clanChannelItem");
+  if(!data.clan){
+    clanItem.classList.add("hidden");
+    channelData.set("clan", []);
+    if(currentChannel==="clan") setChannel("tr");
+  } else {
+    clanItem.classList.remove("hidden");
+    channelData.set("clan", (data.chatHistory||[]).map(m=>({...m, channel:"clan"})));
+    if(currentChannel==="clan") renderChannelMessages();
+  }
   if(!data.clan){
     noClanView.classList.remove("hidden");
     myClanView.classList.add("hidden");
@@ -1328,21 +1521,11 @@ function handleMyClan(data){
     membersList.appendChild(li);
   });
 
-  const clanChatEl = document.getElementById("clanChatMessages");
-  clanChatEl.innerHTML = "";
-  (data.chatHistory||[]).forEach(addClanChatMessage);
 }
 
 function addClanChatMessage(msg){
-  const el = document.getElementById("clanChatMessages");
-  const li=document.createElement("li");
-  const nameSpan=document.createElement("span");
-  nameSpan.style.fontWeight="bold"; nameSpan.style.color = msg.system ? "#aaa" : "#FFD700";
-  nameSpan.textContent = msg.name+": ";
-  li.appendChild(nameSpan);
-  li.appendChild(document.createTextNode(msg.text));
-  el.appendChild(li);
-  el.scrollTop = el.scrollHeight;
+  addChatMessage({...msg, channel:"clan"});
+  if(chatPanel.classList.contains("hidden")){ unreadChat++; updateChatBadge(); }
 }
 
 document.getElementById("myClanPhoto").addEventListener("click", ()=>{
@@ -1363,15 +1546,7 @@ document.getElementById("clanDescSaveBtn").addEventListener("click", ()=>{
 document.getElementById("leaveClanBtn").addEventListener("click", ()=>{
   socket.send(JSON.stringify({type:"leave_clan"}));
 });
-function sendClanChat(){
-  const input = document.getElementById("clanChatTextInput");
-  const text = input.value.trim();
-  if(!text) return;
-  socket.send(JSON.stringify({type:"clan_chat", text}));
-  input.value = "";
-}
-document.getElementById("clanChatSendBtn").addEventListener("click", sendClanChat);
-document.getElementById("clanChatTextInput").addEventListener("keydown", e=>{ if(e.key==="Enter") sendClanChat(); });
+
 document.getElementById("closeAuthBtn").addEventListener("click", ()=>{
   authPanel.classList.add("hidden");
 });
@@ -1530,7 +1705,16 @@ function updateTransform(){
    Eskiden tahta varsayılan olarak 1:1 boyutta açılıp ekranın çok
    dışına taşıyordu, mobilde "tuval küçük/kayık kalıyor" hissi buradan
    geliyordu. */
+function positionBottomInfo(){
+  const bi=document.getElementById("bottomLeftInfo");
+  if(bi) bi.style.bottom=((palette.offsetHeight||70)+8)+"px";
+}
+function updateCoord(x,y){
+  const cb=document.getElementById("coordBox");
+  if(cb) cb.textContent=`(${x}, ${y})`;
+}
 function fitToScreen(){
+  positionBottomInfo();
   window.scrollTo(0,0); // sayfa kaymis olsa bile hucre secimi bozulmasin diye garantiye al
   const paletteH = palette.offsetHeight || 70;
   const availW = window.innerWidth;
@@ -1576,6 +1760,7 @@ function screenToGrid(clientX, clientY){
    yanlışlıkla yanına basmak artık bir sorun değil. */
 function selectCell(gx,gy){
   if(gx<0||gx>=gridSize||gy<0||gy>=gridSize) return;
+  updateCoord(gx,gy);
   selected={x:gx,y:gy};
   redrawWithHighlight();
   showConfirmBar();
@@ -1776,6 +1961,38 @@ function jumpToCoord(x,y){
   selectCell(x,y);
 }
 
+
+/* --- Oyun ici menu (⌄), Ayarlar, Yardim --- */
+const gameMenu=document.getElementById("gameMenu");
+document.getElementById("gameMenuBtn").addEventListener("click", e=>{ e.stopPropagation(); gameMenu.classList.toggle("hidden"); });
+document.addEventListener("click", e=>{ if(!gameMenu.contains(e.target)) gameMenu.classList.add("hidden"); });
+canvas.addEventListener("mousemove", e=>{
+  const {x,y}=screenToGrid(e.clientX,e.clientY);
+  if(x>=0&&x<gridSize&&y>=0&&y<gridSize) updateCoord(x,y);
+});
+const settingsPanel=document.getElementById("settingsPanel");
+const helpPanel=document.getElementById("helpPanel");
+function refreshSettingsUI(){
+  document.getElementById("setThemeBtn").textContent = document.documentElement.dataset.theme==="dark" ? "Koyu" : "Açık";
+  document.getElementById("setSoundBtn").textContent = settings.sound ? "Açık" : "Kapalı";
+  document.getElementById("setVibBtn").textContent = settings.vibrate ? "Açık" : "Kapalı";
+}
+document.getElementById("setThemeBtn").addEventListener("click", ()=>{ toggleTheme(); refreshSettingsUI(); });
+document.getElementById("setSoundBtn").addEventListener("click", ()=>{ settings.sound=!settings.sound; localStorage.setItem("pt_sound", settings.sound?"1":"0"); refreshSettingsUI(); });
+document.getElementById("setVibBtn").addEventListener("click", ()=>{ settings.vibrate=!settings.vibrate; localStorage.setItem("pt_vib", settings.vibrate?"1":"0"); refreshSettingsUI(); });
+document.getElementById("closeSettingsBtn").addEventListener("click", ()=>settingsPanel.classList.add("hidden"));
+document.getElementById("closeHelpBtn").addEventListener("click", ()=>helpPanel.classList.add("hidden"));
+gameMenu.querySelectorAll("button").forEach(b=>b.addEventListener("click", ()=>{
+  gameMenu.classList.add("hidden");
+  const a=b.dataset.action;
+  if(a==="home") goHome();
+  else if(a==="account") authBtn.click();
+  else if(a==="clans") document.getElementById("clanMenuBtn").click();
+  else if(a==="chat") openChatPanel();
+  else if(a==="announce") document.getElementById("announceBtn").click();
+  else if(a==="settings"){ refreshSettingsUI(); settingsPanel.classList.remove("hidden"); }
+  else if(a==="help") helpPanel.classList.remove("hidden");
+}));
 </script>
 </body>
 </html>
