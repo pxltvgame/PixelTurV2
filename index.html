@@ -475,6 +475,16 @@
   #authSwitchBtn{padding:6px 20px}
   @media (max-width:480px){ #founderText{display:none} }
 
+
+  /* ===== Moderator + mobil duzeltmeler ===== */
+  #chatClearBtn{background:var(--btn-bg);color:var(--btn-fg);border:1px solid var(--win-border);width:40px;font-size:17px;cursor:pointer;margin:0;padding:0;align-self:stretch}
+  #chatWarn{background:var(--row-bg);color:var(--muted);font-size:12px;padding:5px 8px;border-top:1px solid var(--win-border);border-bottom:1px solid var(--win-border);flex-shrink:0}
+  .modDelBtn{background:transparent;border:0;cursor:pointer;font-size:13px;padding:0 0 0 6px;flex-shrink:0}
+  @media (max-width:768px){
+    #bottomLeftInfo{flex-direction:row;gap:4px}
+    #onlineBadge,#coordBox{font-size:13px;padding:4px 8px}
+  }
+
   /* Mobilde butonları büyüt */
   @media (max-width: 768px) {
     .color {
@@ -703,9 +713,11 @@
   <div id="chatPanelInner">
     <div id="chatHeader">
       <div id="chatTitle">Sohbet - Kanal: <span id="chatChannelLabel">tr</span> <span id="chatOnline"></span></div>
+      <button id="chatClearBtn" type="button" class="hidden" title="Kanalı temizle (moderatör)">🗑</button>
       <button id="chatThemeBtn" type="button" title="Açık/Koyu tema">◐</button>
       <button id="closeChatBtn" type="button">X</button>
     </div>
+    <div id="chatWarn">⚠ Kişisel bilgi paylaşma, hakaret etme. Yazılanlardan yapımcı sorumlu değildir.</div>
     <ul id="chatMessages"><li class="chatEmpty">Henüz mesaj yok, ilk yazan sen ol!</li></ul>
     <div id="chatInputRow">
       <input id="chatTextInput" type="text" maxlength="200" placeholder="Bir şeyler yaz...">
@@ -878,6 +890,7 @@ const chatMessages = document.getElementById("chatMessages");
 const chatTextInput = document.getElementById("chatTextInput");
 const chatSendBtn = document.getElementById("chatSendBtn");
 let chatCooldown = false;
+let loggedInIsMod = false;
 let currentChannel = "tr";
 const channelData = new Map(["tr","int","europe","asia","america","clan"].map(c=>[c,[]]));
 
@@ -930,7 +943,7 @@ function openChatPanel(){
     authPanel.classList.remove("hidden");
     return;
   }
-  if(localStorage.getItem("placeturk_chat_rules_accepted")==="1"){
+  if(sessionStorage.getItem("placeturk_chat_rules_accepted")==="1"){
     chatPanel.classList.remove("hidden");
     chatMessages.scrollTop = chatMessages.scrollHeight;
   } else {
@@ -951,7 +964,7 @@ chatRulesCheckbox.addEventListener("change", ()=>{
 });
 chatRulesAcceptBtn.addEventListener("click", ()=>{
   if(!chatRulesCheckbox.checked) return;
-  localStorage.setItem("placeturk_chat_rules_accepted", "1");
+  sessionStorage.setItem("placeturk_chat_rules_accepted", "1");
   chatRules.classList.add("hidden");
   chatPanel.classList.remove("hidden");
   chatMessages.scrollTop = chatMessages.scrollHeight;
@@ -1037,6 +1050,12 @@ function appendMessageToDOM(msg){
   const timeSpan = document.createElement("span");
   timeSpan.className = "chatTime"; timeSpan.textContent = fmtTime(msg.ts);
   meta.appendChild(nameSpan); meta.appendChild(timeSpan);
+  if(loggedInIsMod && !msg.system && msg.id!==undefined && !msg.removed){
+    const del=document.createElement("button");
+    del.type="button"; del.className="modDelBtn"; del.textContent="🗑"; del.title="Mesajı sil";
+    del.addEventListener("click", ()=>socket.send(JSON.stringify({type:"mod_delete", id:msg.id, channel:msg.channel||currentChannel})));
+    meta.appendChild(del);
+  }
   const textDiv = document.createElement("div"); textDiv.className = "chatText";
   renderMessageText(textDiv, msg.text);
   body.appendChild(meta); body.appendChild(textDiv);
@@ -1062,12 +1081,13 @@ function addChatMessage(msg){
 /* Sunucu spam tespit edip bir mesaji sildiginde, o mesaji herkesin
    ekranindan da kaldirir (tamamen yok etmek yerine "kaldirildi" izi
    birakiyoruz, boylece "mesajim aniden kayboldu" kafa karisikligi olmaz). */
-function removeChatMessage(id, channel){
+function removeChatMessage(id, channel, by){
   const ch = channel || "tr";
+  const txt = by==="mod" ? "Bu mesaj moderatör tarafından silindi." : "Bu mesaj spam nedeniyle kaldırıldı.";
   const list = channelData.get(ch);
   if(list){
     const idx = list.findIndex(m=>m.id===id);
-    if(idx!==-1) list[idx] = { ...list[idx], text:"Bu mesaj spam nedeniyle kaldırıldı.", removed:true };
+    if(idx!==-1) list[idx] = { ...list[idx], text:txt, removed:true };
   }
   if(ch !== currentChannel) return;
   const li = chatMessages.querySelector(`li[data-id="${id}"]`);
@@ -1075,11 +1095,12 @@ function removeChatMessage(id, channel){
   li.innerHTML = "";
   li.style.color = "#777";
   li.style.fontStyle = "italic";
-  li.textContent = "Bu mesaj spam nedeniyle kaldırıldı.";
+  li.textContent = txt;
 }
 
-function clearChat(){
-  channelData.forEach((v,k)=>{ if(k!=="clan") channelData.set(k, []); });
+function clearChat(ch){
+  if(ch && channelData.has(ch)) channelData.set(ch, []);
+  else channelData.forEach((v,k)=>{ if(k!=="clan") channelData.set(k, []); });
   renderChannelMessages();
 }
 
@@ -1185,9 +1206,20 @@ function updateLoggedInUI(){
   }
 }
 
+function setModState(v){
+  loggedInIsMod = v;
+  document.getElementById("chatClearBtn").classList.toggle("hidden", !v);
+  renderChannelMessages();
+}
+document.getElementById("chatClearBtn").addEventListener("click", ()=>{
+  if(currentChannel==="clan") return;
+  if(confirm("Bu kanalın tüm mesajları herkes için silinsin mi?")) socket.send(JSON.stringify({type:"mod_clear_channel", channel:currentChannel}));
+});
+
 function logout(){
   if(socket && socket.readyState===WebSocket.OPEN) socket.send(JSON.stringify({type:"logout"}));
   loggedInUsername = null;
+  setModState(false);
   localStorage.removeItem("placeturk_logged_in_as");
   updateLoggedInUI();
 }
@@ -1328,6 +1360,11 @@ function renderProfile(data){
         socket.send(JSON.stringify({type:"send_friend_request", username:data.username}));
       }));
     }
+  }
+  if(loggedInIsMod && data.friendStatus!=="self"){
+    profileActions.appendChild(makeActionBtn("🔇 10 dk", ()=>socket.send(JSON.stringify({type:"mod_mute", username:data.username, minutes:10}))));
+    profileActions.appendChild(makeActionBtn("🔇 1 saat", ()=>socket.send(JSON.stringify({type:"mod_mute", username:data.username, minutes:60}))));
+    profileActions.appendChild(makeActionBtn("🔊 Aç", ()=>socket.send(JSON.stringify({type:"mod_unmute", username:data.username}))));
   }
 }
 
@@ -1585,6 +1622,7 @@ function handleAuthOk(data){
   authSubmitting = false;
   authSubmitBtn.disabled = false;
   loggedInUsername = data.username;
+  setModState(!!data.moderator);
   localStorage.setItem("placeturk_logged_in_as", loggedInUsername);
   authMsg.textContent = authMode==="login" ? "Giriş başarılı!" : "Kayıt başarılı, giriş yapıldı!";
   authMsg.className = "success";
@@ -1631,8 +1669,9 @@ function connect(){
       addChatMessage(data);
       if(chatPanel.classList.contains("hidden")){ unreadChat++; updateChatBadge(); }
     }
-    if(data.type==="chat_delete"){ removeChatMessage(data.id, data.channel); }
-    if(data.type==="chat_clear"){ clearChat(); }
+    if(data.type==="chat_delete"){ removeChatMessage(data.id, data.channel, data.by); }
+    if(data.type==="chat_clear"){ clearChat(data.channel); }
+    if(data.type==="mod_info"){ showToast(data.text); }
     if(data.type==="chat_blocked"){ showChatBlockedNotice(data.reason); }
     if(data.type==="online"){ updateOnlineCount(data.count); }
     if(data.type==="auth_ok"){ handleAuthOk(data); }
@@ -1787,7 +1826,8 @@ const confirmBtn=document.getElementById("confirmBtn");
 const cancelBtn=document.getElementById("cancelBtn");
 function showConfirmBar(){
   confirmSwatch.style.background=currentColor;
-  confirmBar.style.bottom=(palette.offsetHeight+12)+"px";
+  const infoH = window.innerWidth<=768 ? (document.getElementById("bottomLeftInfo").offsetHeight+8) : 0;
+  confirmBar.style.bottom=(palette.offsetHeight+12+infoH)+"px";
   confirmBar.style.display="flex";
   confirmBtn.disabled=!canPlace;
 }
@@ -1933,7 +1973,8 @@ function showToast(msg){
   // Yerlestir/Vazgec cubugunun ve paletin ustunde kalsin diye yuksekligi
   // her seferinde yeniden hesapla (confirmBar acikken daha yukari cikar).
   const confirmVisible = confirmBar.style.display==="flex";
-  const clearance = palette.offsetHeight + (confirmVisible ? confirmBar.offsetHeight + 24 : 16);
+  const infoH2 = window.innerWidth<=768 ? (document.getElementById("bottomLeftInfo").offsetHeight+8) : 0;
+  const clearance = palette.offsetHeight + infoH2 + (confirmVisible ? confirmBar.offsetHeight + 24 : 16);
   toast.style.bottom = clearance + "px";
   toast.classList.add("show");
   clearTimeout(coordToastTimer);

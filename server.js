@@ -17,6 +17,13 @@ const CLAN_CHAT_HISTORY_LIMIT = 50;
 const MAX_CLAN_PHOTO_BYTES = 300 * 1024; // data URI olarak ~300KB sinir (depolamayi korumak icin)
 const MAX_AVATAR_BYTES = 150 * 1024;
 const CHANNELS = ["tr", "int", "europe", "asia", "america"];
+// Moderatorler: kullanici adlari (buyuk/kucuk harf fark etmez). Render'da
+// MODERATORS ortam degiskeniyle (virgulle ayirarak) degistirilebilir.
+const MODERATORS = new Set(
+  (process.env.MODERATORS || "PixelTurV2,Deneme")
+    .split(",").map((x) => x.trim().toLocaleLowerCase("tr")).filter(Boolean)
+);
+const mutedUntil = new Map(); // usernameLower -> bitis zamani (ms)
 
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
@@ -164,6 +171,22 @@ const BANNED_WORDS_REGEX = new RegExp(
 );
 function containsBannedWord(text) {
   return BANNED_WORDS_REGEX.test(text.toLocaleLowerCase("tr"));
+}
+
+function isModerator(ws) {
+  return !!ws.username && MODERATORS.has(ws.username.toLocaleLowerCase("tr"));
+}
+// Susturulmus kullanici ise mesaji engeller ve bilgi verir
+function checkMuted(ws, replyType) {
+  const until = mutedUntil.get(ws.username.toLocaleLowerCase("tr"));
+  if (until && until > Date.now()) {
+    const mins = Math.ceil((until - Date.now()) / 60000);
+    if (ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({ type: replyType || "chat_blocked", reason: `Susturuldun, ${mins} dk sonra tekrar yazabilirsin.` }));
+    }
+    return true;
+  }
+  return false;
 }
 
 function broadcast(obj) {
@@ -335,7 +358,7 @@ wss.on("connection", async (ws, req) => {
           }
           ws.username = result.rows[0].username;
           onlineByUsername.set(usernameLower, ws);
-          ws.send(JSON.stringify({ type: "auth_ok", action, username: ws.username }));
+          ws.send(JSON.stringify({ type: "auth_ok", action, username: ws.username, moderator: isModerator(ws) }));
         } else {
           const result = await pool.query(
             "SELECT username, password_hash FROM users WHERE username_lower = $1",
@@ -353,7 +376,7 @@ wss.on("connection", async (ws, req) => {
           }
           ws.username = row.username;
           onlineByUsername.set(usernameLower, ws);
-          ws.send(JSON.stringify({ type: "auth_ok", action, username: ws.username }));
+          ws.send(JSON.stringify({ type: "auth_ok", action, username: ws.username, moderator: isModerator(ws) }));
         }
         // Giris/kayit basarili oldu: eger bir klana uyeyse, bilgisini hemen yolla
         await sendMyClanInfo(ws);
@@ -562,6 +585,7 @@ wss.on("connection", async (ws, req) => {
         ws.send(JSON.stringify({ type: "dm_error", reason: "DM göndermek için giriş yapmalısın." }));
         return;
       }
+      if (checkMuted(ws, "dm_error")) return;
       let { to, text } = data;
       if (typeof to !== "string" || typeof text !== "string") return;
       text = text.trim().slice(0, 300);
@@ -796,6 +820,7 @@ wss.on("connection", async (ws, req) => {
 
     if (data.type === "clan_chat") {
       if (!ws.username) return;
+      if (checkMuted(ws)) return;
       const meLower = ws.username.toLocaleLowerCase("tr");
       const nameLower = userClan.get(meLower);
       if (!nameLower) return;
@@ -824,6 +849,42 @@ wss.on("connection", async (ws, req) => {
       return;
     }
 
+    // --- Moderator islemleri ---
+    if (data.type === "mod_delete") {
+      if (!isModerator(ws)) return;
+      const ch = CHANNELS.includes(data.channel) ? data.channel : "tr";
+      const id = Number(data.id);
+      chatHistoryByChannel.set(ch, chatHistoryByChannel.get(ch).filter((m) => m.id !== id));
+      broadcast({ type: "chat_delete", id, channel: ch, by: "mod" });
+      return;
+    }
+    if (data.type === "mod_clear_channel") {
+      if (!isModerator(ws)) return;
+      const ch = CHANNELS.includes(data.channel) ? data.channel : null;
+      if (!ch) return;
+      chatHistoryByChannel.set(ch, []);
+      broadcast({ type: "chat_clear", channel: ch });
+      return;
+    }
+    if (data.type === "mod_mute" || data.type === "mod_unmute") {
+      if (!isModerator(ws)) return;
+      const target = (typeof data.username === "string" ? data.username : "").trim().toLocaleLowerCase("tr");
+      if (!target || MODERATORS.has(target)) return;
+      const targetWs = onlineByUsername.get(target);
+      if (data.type === "mod_mute") {
+        const minutes = Math.min(Math.max(Number(data.minutes) || 10, 1), 1440);
+        mutedUntil.set(target, Date.now() + minutes * 60000);
+        ws.send(JSON.stringify({ type: "mod_info", text: `${data.username} ${minutes} dk susturuldu.` }));
+        if (targetWs && targetWs.readyState === WebSocket.OPEN) {
+          targetWs.send(JSON.stringify({ type: "chat_blocked", reason: `Moderatör tarafından ${minutes} dk susturuldun.` }));
+        }
+      } else {
+        mutedUntil.delete(target);
+        ws.send(JSON.stringify({ type: "mod_info", text: `${data.username} susturması kaldırıldı.` }));
+      }
+      return;
+    }
+
     if (data.type === "chat") {
       // Sohbete artik sadece giris yapmis kullanicilar yazabiliyor -
       // isim her zaman hesabin gercek adi, baskasinin adini yazip o
@@ -837,6 +898,7 @@ wss.on("connection", async (ws, req) => {
         }
         return;
       }
+      if (checkMuted(ws)) return;
       const name = ws.username;
       let { text, channel } = data;
       if (typeof text !== "string") return;
