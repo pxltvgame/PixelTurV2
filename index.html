@@ -524,6 +524,19 @@
   .ic.solo{margin-right:0}
   .dot{display:inline-block;width:.6em;height:.6em;background:#2ecc40;border-radius:50% !important;margin-right:.4em;vertical-align:.05em}
   .dot.after{margin:0 0 0 .4em}
+
+  /* --- Insan dogrulama penceresi --- */
+  #humanModal{position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:5000;display:flex;align-items:center;justify-content:center;padding:16px}
+  #humanModal.hidden{display:none}
+  #humanBox{background:var(--win-bg);color:var(--win-fg);border:1px solid var(--win-border);padding:16px;width:100%;max-width:320px;text-align:center;font-family:Arial,sans-serif}
+  #humanBox h2{margin:0 0 6px;font-size:18px}
+  #humanBox p{margin:0 0 10px;font-size:13px;color:var(--muted)}
+  #humanImg{width:190px;height:64px;border:1px solid var(--win-border);background:#f1f1f1;display:block;margin:0 auto 10px;max-width:100%}
+  #humanAnswer{width:100%;box-sizing:border-box;padding:9px;font-size:18px;text-align:center;letter-spacing:4px;text-transform:uppercase;background:var(--input-bg);color:var(--win-fg);border:1px solid var(--win-border)}
+  #humanMsg{min-height:18px;margin:8px 0 0;font-size:13px;color:#e74c3c}
+  #humanBtns{display:flex;gap:8px;margin-top:10px}
+  #humanBtns button{flex:1;padding:10px;font-size:15px;cursor:pointer;background:var(--btn-bg);color:var(--btn-fg);border:1px solid var(--win-border)}
+  #humanOkBtn{font-weight:bold}
 </style>
 </head>
 <body>
@@ -670,6 +683,20 @@
   </div>
 </div>
 
+<div id="humanModal" class="hidden">
+  <form id="humanBox">
+    <h2><svg class="ic"><use href="#i-shield"/></svg>İnsan Doğrulaması</h2>
+    <p>Bot olmadığını göstermek için resimdeki kodu yaz.</p>
+    <img id="humanImg" alt="doğrulama kodu">
+    <input id="humanAnswer" type="text" maxlength="5" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="KOD">
+    <div id="humanMsg"></div>
+    <div id="humanBtns">
+      <button type="button" id="humanRefreshBtn">Yenile</button>
+      <button type="button" id="humanCancelBtn">İptal</button>
+      <button type="submit" id="humanOkBtn">Doğrula</button>
+    </div>
+  </form>
+</div>
 <div id="profileModal" class="hidden">
   <div id="profileModalInner">
     <div id="profileAvatarBig"></div>
@@ -857,10 +884,17 @@ function notifyCooldownReady(){
   }
 }
 
+let cdTimer=null;
+function resetCooldown(){
+  clearInterval(cdTimer); canPlace=true;
+  cooldownDiv.textContent="Hazır!"; cooldownDiv.className="cdReady";
+  if(confirmBtn) confirmBtn.disabled=false;
+}
 function startCooldown(){
+  clearInterval(cdTimer);
   canPlace=false; let t=cooldownTime;
   if(confirmBtn) confirmBtn.disabled=true;
-  const timer=setInterval(()=>{
+  const timer=cdTimer=setInterval(()=>{
     t--; if(t<=0){clearInterval(timer); canPlace=true;
       cooldownDiv.textContent="Hazır!"; cooldownDiv.className="cdReady";
       if(confirmBtn) confirmBtn.disabled=false;
@@ -1345,6 +1379,47 @@ function openProfile(username){
   profileActions.innerHTML = "";
 }
 
+
+/* --- Insan dogrulama (captcha) --- */
+let lastPlaceMsg=null, humanId=null, humanReason=null;
+const humanModal=document.getElementById("humanModal"), humanImg=document.getElementById("humanImg"),
+      humanAnswer=document.getElementById("humanAnswer"), humanMsg=document.getElementById("humanMsg");
+function requestCaptcha(){
+  if(socket && socket.readyState===WebSocket.OPEN) socket.send(JSON.stringify({type:"get_captcha"}));
+}
+function openHumanModal(reason){
+  humanReason=reason; humanMsg.textContent=""; humanAnswer.value=""; humanImg.removeAttribute("src");
+  humanModal.classList.remove("hidden"); requestCaptcha();
+}
+function closeHumanModal(){ humanModal.classList.add("hidden"); }
+function handleNeedHuman(data){
+  if(data.reason==="place"){
+    resetCooldown(); // piksel henuz basilmadi, bekleme baslatma
+  } else {
+    clearTimeout(authTimeoutTimer); authSubmitting=false; authSubmitBtn.disabled=false;
+    authMsg.textContent=""; authMsg.className="";
+  }
+  openHumanModal(data.reason);
+}
+function handleHumanOk(){
+  closeHumanModal();
+  if(humanReason==="place" && lastPlaceMsg && socket.readyState===WebSocket.OPEN){
+    socket.send(JSON.stringify(lastPlaceMsg)); startCooldown(); showToast("Doğrulandı, piksel yerleştirildi.");
+  } else if(humanReason==="register"){
+    document.getElementById("authForm").requestSubmit();
+  }
+  humanReason=null;
+}
+document.getElementById("humanBox").addEventListener("submit",e=>{
+  e.preventDefault();
+  const a=humanAnswer.value.trim();
+  if(!a||!humanId) return;
+  humanMsg.textContent="";
+  socket.send(JSON.stringify({type:"verify_human", id:humanId, answer:a}));
+});
+document.getElementById("humanRefreshBtn").addEventListener("click", requestCaptcha);
+document.getElementById("humanCancelBtn").addEventListener("click", ()=>{ closeHumanModal(); humanReason=null; });
+
 function makeActionBtn(label, onClick){
   const b=document.createElement("button");
   b.className = "profileActionBtn"; b.type="button";
@@ -1717,6 +1792,10 @@ function connect(){
     if(data.type==="online"){ updateOnlineCount(data.count); }
     if(data.type==="auth_ok"){ handleAuthOk(data); }
     if(data.type==="auth_error"){ handleAuthError(data); }
+    if(data.type==="need_human"){ handleNeedHuman(data); }
+    if(data.type==="captcha"){ humanImg.src="data:image/svg+xml;charset=utf-8,"+encodeURIComponent(data.svg); humanId=data.id; humanAnswer.value=""; setTimeout(()=>humanAnswer.focus(),50); }
+    if(data.type==="human_ok"){ handleHumanOk(); }
+    if(data.type==="human_fail"){ humanMsg.textContent=data.reason||"Kod yanlış."; requestCaptcha(); }
     if(data.type==="avatar"){
       const lower = data.username.toLocaleLowerCase("tr");
       avatarCache.set(lower, data.avatar_data || null);
@@ -1878,7 +1957,8 @@ function hideConfirmBar(){
 confirmBtn.addEventListener("click",()=>{
   if(!selected||!canPlace) return;
   if(socket && socket.readyState===WebSocket.OPEN){
-    socket.send(JSON.stringify({type:"place",x:selected.x,y:selected.y,color:currentColor}));
+    lastPlaceMsg={type:"place",x:selected.x,y:selected.y,color:currentColor};
+    socket.send(JSON.stringify(lastPlaceMsg));
     startCooldown();
   }
   clearSelection();

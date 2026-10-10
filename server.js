@@ -113,6 +113,61 @@ setInterval(() => {
   for (const [ip, t] of lastPlacedAt) if (now - t > 5 * 60 * 1000) lastPlacedAt.delete(ip);
 }, 60 * 1000).unref();
 
+
+/* ================= INSAN DOGRULAMA (captcha) =================
+   Disaridan hesap/anahtar gerektirmez; GitHub Pages ve exe'de de calisir.
+   Kayit olurken ve (hesapsiz) ilk piksel basarken istenir.
+   Dogrulanan IP 6 saat dogrulanmis sayilir; giris yapan hesap da dogrulanmistir. */
+const CAPTCHA_TTL_MS = 3 * 60 * 1000;
+const HUMAN_TTL_MS = 6 * 60 * 60 * 1000;
+const CAPTCHA_CHARS = "ABCDEFGHJKLMNPRSTUVWXYZ23456789";
+const captchas = new Map();      // id -> {answer, exp, tries}
+const humanIps = new Map();      // ip -> expiry ts
+const lastCaptchaAt = new Map(); // ip -> ts
+const crypto = require("crypto");
+
+function rnd(n) { return crypto.randomInt(n); }
+function makeCaptcha() {
+  let text = "";
+  for (let i = 0; i < 5; i++) text += CAPTCHA_CHARS[rnd(CAPTCHA_CHARS.length)];
+  const W = 190, H = 64;
+  const colors = ["#c0392b", "#1f6fb2", "#1e8449", "#8e44ad", "#d35400", "#2c3e50"];
+  let svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}"><rect width="100%" height="100%" fill="#f1f1f1"/>`;
+  for (let i = 0; i < 7; i++) {
+    svg += `<path d="M${rnd(W)} ${rnd(H)} C${rnd(W)} ${rnd(H)},${rnd(W)} ${rnd(H)},${rnd(W)} ${rnd(H)}" stroke="${colors[rnd(colors.length)]}" stroke-width="${1 + rnd(2)}" fill="none" opacity="0.65"/>`;
+  }
+  for (let i = 0; i < 40; i++) {
+    svg += `<circle cx="${rnd(W)}" cy="${rnd(H)}" r="${1 + rnd(2)}" fill="${colors[rnd(colors.length)]}" opacity="0.5"/>`;
+  }
+  for (let i = 0; i < text.length; i++) {
+    const x = 18 + i * 32 + rnd(6);
+    const y = 42 + rnd(12);
+    const rot = rnd(50) - 25;
+    const size = 30 + rnd(10);
+    svg += `<text x="${x}" y="${y}" font-family="Arial,Helvetica,sans-serif" font-weight="bold" font-size="${size}" fill="${colors[rnd(colors.length)]}" transform="rotate(${rot} ${x} ${y})">${text[i]}</text>`;
+  }
+  for (let i = 0; i < 3; i++) {
+    svg += `<path d="M0 ${10 + rnd(H - 20)} Q${W / 2} ${rnd(H)} ${W} ${10 + rnd(H - 20)}" stroke="#222" stroke-width="1.5" fill="none" opacity="0.55"/>`;
+  }
+  svg += "</svg>";
+  const id = crypto.randomBytes(12).toString("hex");
+  if (captchas.size > 3000) captchas.clear(); // asiri dolmaya karsi
+  captchas.set(id, { answer: text, exp: Date.now() + CAPTCHA_TTL_MS, tries: 0 });
+  return { id, svg };
+}
+function isHuman(ws) {
+  if (ws.human) return true;
+  const t = humanIps.get(ws.clientIp);
+  if (t && Date.now() < t) { ws.human = true; return true; }
+  return false;
+}
+setInterval(() => {
+  const now = Date.now();
+  for (const [id, c] of captchas) if (now > c.exp) captchas.delete(id);
+  for (const [ip, t] of humanIps) if (now > t) humanIps.delete(ip);
+  for (const [ip, t] of lastCaptchaAt) if (now - t > 60000) lastCaptchaAt.delete(ip);
+}, 60 * 1000).unref();
+
 // Olu baglantilari at (ping/pong)
 setInterval(() => {
   for (const c of wss.clients) {
@@ -423,6 +478,35 @@ wss.on("connection", async (ws, req) => {
       return;
     }
 
+    if (data.type === "get_captcha") {
+      const nowG = Date.now();
+      if (nowG - (lastCaptchaAt.get(ws.clientIp) || 0) < 1200) { addStrike(ws, "captcha seli", 0.5); return; }
+      lastCaptchaAt.set(ws.clientIp, nowG);
+      const c = makeCaptcha();
+      ws.send(JSON.stringify({ type: "captcha", id: c.id, svg: c.svg }));
+      return;
+    }
+    if (data.type === "verify_human") {
+      const c = typeof data.id === "string" ? captchas.get(data.id) : null;
+      const ans = typeof data.answer === "string" ? data.answer.trim().toUpperCase() : "";
+      if (!c || Date.now() > c.exp) {
+        ws.send(JSON.stringify({ type: "human_fail", reason: "Kodun süresi doldu, yeni kod alındı." }));
+        return;
+      }
+      c.tries++;
+      if (ans && ans === c.answer) {
+        captchas.delete(data.id);
+        ws.human = true;
+        humanIps.set(ws.clientIp, Date.now() + HUMAN_TTL_MS);
+        ws.send(JSON.stringify({ type: "human_ok" }));
+      } else {
+        captchas.delete(data.id); // her kod tek kullanimlik
+        addStrike(ws, "captcha denemesi", 0.5);
+        ws.send(JSON.stringify({ type: "human_fail", reason: "Kod yanlış, yeni kod alındı." }));
+      }
+      return;
+    }
+
     if (data.type === "register" || data.type === "login") {
       const action = data.type;
       let { username, password } = data;
@@ -434,6 +518,11 @@ wss.on("connection", async (ws, req) => {
           ws.send(JSON.stringify({ type: "auth_error", action, reason }));
         }
       };
+
+      if (action === "register" && !isHuman(ws)) {
+        ws.send(JSON.stringify({ type: "need_human", reason: "register" }));
+        return;
+      }
 
       // --- IP basina kayit/giris hizini sinirla ---
       const now = Date.now();
@@ -489,6 +578,7 @@ wss.on("connection", async (ws, req) => {
           }
           ws.username = row.username;
           onlineByUsername.set(usernameLower, ws);
+          ws.human = true; // sifreyle giris yapan hesap dogrulanmis sayilir
           ws.send(JSON.stringify({ type: "auth_ok", action, username: ws.username, moderator: isModerator(ws) }));
         }
         // Giris/kayit basarili oldu: eger bir klana uyeyse, bilgisini hemen yolla
@@ -1085,6 +1175,12 @@ wss.on("connection", async (ws, req) => {
     if (typeof color !== "string" || !HEX_COLOR_REGEX.test(color)) {
       return; // gecersiz renk
     }
+
+    if (!ws.username && !isHuman(ws)) {
+      ws.send(JSON.stringify({ type: "need_human", reason: "place", x, y, color }));
+      return;
+    }
+    if (ws.username) ws.human = true;
 
     // --- Sunucu tarafi cooldown ---
     const now = Date.now();
