@@ -15,6 +15,8 @@ const DM_COOLDOWN_MS = 2 * 1000;
 const CLAN_CHAT_COOLDOWN_MS = 2 * 1000;
 const CLAN_HISTORY_PAGE = 100;   // klan sohbeti: bir seferde yuklenen mesaj
 const MAX_CLANS_PER_USER = 5;
+const RANK = { member: 0, senior: 1, mod: 2, owner: 3 }; // Uye < Kidemli Uye < Moderator < Kurucu
+const CLAN_NEW_NAME_REGEX = /^[A-Za-z0-9._-]{2,30}$/;
 const MAX_CLAN_PHOTO_BYTES = 120 * 1024; // data URI olarak ~300KB sinir (depolamayi korumak icin)
 const MAX_AVATAR_BYTES = 150 * 1024;
 const CHANNELS = ["tr", "int", "europe", "asia", "america"];
@@ -206,6 +208,24 @@ const clanMembersCache = new Map();
 const lastDmAt = new Map();
 const lastClanChatAt = new Map();
 const lastInviteAt = new Map();
+const repClanByUser = new Map(); // usernameLower -> temsil edilen klan (piksel sayaci icin)
+
+// Temsil edilen klana atilan pikseli say (sadece giris yapmis ve klan temsil eden kullanicilar)
+function creditClanPixel(lower) {
+  const nl = repClanByUser.get(lower);
+  if (!nl || !myClanSet(lower).has(nl)) return;
+  pool.query("UPDATE clans SET pixels_total = pixels_total + 1 WHERE name_lower=$1", [nl]).catch(() => {});
+  pool.query(
+    "INSERT INTO clan_daily (clan_name_lower, day, pixels) VALUES ($1, CURRENT_DATE, 1) ON CONFLICT (clan_name_lower, day) DO UPDATE SET pixels = clan_daily.pixels + 1",
+    [nl]
+  ).catch(() => {});
+}
+async function loadRepClan(ws) {
+  const lower = ws.username.toLocaleLowerCase("tr");
+  const r = await pool.query("SELECT rep_clan FROM users WHERE username_lower=$1", [lower]);
+  if (r.rows.length && r.rows[0].rep_clan) repClanByUser.set(lower, r.rows[0].rep_clan);
+  else repClanByUser.delete(lower);
+}
 
 function myClanSet(lower) { return userClans.get(lower) || new Set(); }
 function cacheAddMember(clan, lower) {
@@ -230,7 +250,7 @@ async function loadClanCaches() {
   for (const row of members.rows) cacheAddMember(row.clan_name_lower, row.username_lower);
 }
 
-async function getClanFullInfo(nameLower) {
+async function getClanFullInfo(nameLower, viewerLower) {
   const clanRes = await pool.query("SELECT * FROM clans WHERE name_lower=$1", [nameLower]);
   if (!clanRes.rows.length) return null;
   const clan = clanRes.rows[0];
@@ -238,18 +258,48 @@ async function getClanFullInfo(nameLower) {
     "SELECT username, role FROM clan_members WHERE clan_name_lower=$1 ORDER BY joined_at ASC",
     [nameLower]
   );
+  const me = membersRes.rows.find((m) => m.username.toLocaleLowerCase("tr") === viewerLower);
+  const myRank = me ? RANK[me.role] : 0;
+  const bansRes = await pool.query("SELECT username FROM clan_bans WHERE clan_name_lower=$1 ORDER BY ts DESC", [nameLower]);
+  let invites = [];
+  if (myRank >= RANK.senior) {
+    const inv = await pool.query(
+      `SELECT COALESCE(u.username, i.to_lower) AS username, i.from_username
+       FROM clan_invites i LEFT JOIN users u ON u.username_lower = i.to_lower
+       WHERE i.clan_name_lower=$1 ORDER BY i.created_at DESC`,
+      [nameLower]
+    );
+    invites = inv.rows.map((r) => ({ username: r.username, from: r.from_username }));
+  }
+  const today = await pool.query("SELECT pixels FROM clan_daily WHERE clan_name_lower=$1 AND day=CURRENT_DATE", [nameLower]);
+  const pixelsToday = today.rows.length ? Number(today.rows[0].pixels) : 0;
+  const pixelsTotal = Number(clan.pixels_total || 0);
+  let rankTotal = null, rankDaily = null;
+  if (pixelsTotal > 0) {
+    const rt = await pool.query("SELECT COUNT(*) AS n FROM clans WHERE pixels_total > $1", [pixelsTotal]);
+    rankTotal = Number(rt.rows[0].n) + 1;
+  }
+  if (pixelsToday > 0) {
+    const rd = await pool.query("SELECT COUNT(*) AS n FROM clan_daily WHERE day=CURRENT_DATE AND pixels > $1", [pixelsToday]);
+    rankDaily = Number(rd.rows[0].n) + 1;
+  }
   return {
     key: nameLower,
     name: clan.name,
+    title: clan.title || clan.name,
     description: clan.description,
     photo_data: clan.photo_data,
     owner: clan.owner_username,
     join_mode: clan.join_mode || "open",
+    hidden: !!clan.hidden,
     members: membersRes.rows.map((m) => ({
       username: m.username,
       role: m.role,
       online: onlineByUsername.has(m.username.toLocaleLowerCase("tr"))
-    }))
+    })),
+    bans: bansRes.rows.map((r) => r.username),
+    invites,
+    stats: { pixelsToday, pixelsTotal, rankDaily, rankTotal }
   };
 }
 
@@ -290,10 +340,11 @@ async function sendMyClanInfo(ws, history) {
   const meLower = ws.username.toLocaleLowerCase("tr");
   const clans = [];
   for (const nl of myClanSet(meLower)) {
-    const info = await getClanFullInfo(nl);
+    const info = await getClanFullInfo(nl, meLower);
     if (info) clans.push(info);
   }
-  sendTo(ws, { type: "my_clans", clans });
+  const rep = repClanByUser.get(meLower);
+  sendTo(ws, { type: "my_clans", clans, rep: rep && myClanSet(meLower).has(rep) ? rep : null });
   if (history) {
     const targets = history === "all" ? clans.map((c) => c.key) : history;
     for (const nl of targets) {
@@ -351,6 +402,8 @@ async function addMemberToClan(ws, nameLower) {
     clanError(ws, `En fazla ${MAX_CLANS_PER_USER} klana üye olabilirsin.`);
     return false;
   }
+  const banned = await pool.query("SELECT 1 FROM clan_bans WHERE clan_name_lower=$1 AND username_lower=$2", [nameLower, meLower]);
+  if (banned.rows.length) { clanError(ws, "Bu klandan yasaklısın."); return false; }
   await pool.query(
     "INSERT INTO clan_members (clan_name_lower, username, username_lower, role) VALUES ($1,$2,$3,'member') ON CONFLICT DO NOTHING",
     [nameLower, ws.username, meLower]
@@ -499,6 +552,28 @@ async function ensureSchema() {
     );
   `);
   await pool.query(`CREATE INDEX IF NOT EXISTS clan_messages_clan_id ON clan_messages (clan_name_lower, id);`);
+  await pool.query(`ALTER TABLE clans ADD COLUMN IF NOT EXISTS title TEXT NOT NULL DEFAULT '';`);
+  await pool.query(`ALTER TABLE clans ADD COLUMN IF NOT EXISTS hidden BOOLEAN NOT NULL DEFAULT FALSE;`);
+  await pool.query(`ALTER TABLE clans ADD COLUMN IF NOT EXISTS pixels_total BIGINT NOT NULL DEFAULT 0;`);
+  await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS rep_clan TEXT;`);
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS clan_daily (
+      clan_name_lower TEXT NOT NULL REFERENCES clans(name_lower) ON DELETE CASCADE,
+      day DATE NOT NULL DEFAULT CURRENT_DATE,
+      pixels INTEGER NOT NULL DEFAULT 0,
+      PRIMARY KEY (clan_name_lower, day)
+    );
+  `);
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS clan_bans (
+      clan_name_lower TEXT NOT NULL REFERENCES clans(name_lower) ON DELETE CASCADE,
+      username_lower TEXT NOT NULL,
+      username TEXT NOT NULL,
+      banned_by TEXT NOT NULL,
+      ts TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      PRIMARY KEY (clan_name_lower, username_lower)
+    );
+  `);
   await pool.query(`
     CREATE TABLE IF NOT EXISTS clan_invites (
       clan_name_lower TEXT NOT NULL REFERENCES clans(name_lower) ON DELETE CASCADE,
@@ -572,7 +647,7 @@ wss.on("connection", async (ws, req) => {
       board,
       chatByChannel: Object.fromEntries(chatHistoryByChannel),
       online: wss.clients.size,
-      version: 3 // 3 = cok klanli, kalici klan sohbeti, roller ve davetler
+      version: 4 // 4 = klan penceresi: baslik/gizli/yasak/kidemli uye/temsil/istatistik
     }));
   } catch (err) {
     console.error("Tahta yuklenirken hata:", err);
@@ -697,6 +772,7 @@ wss.on("connection", async (ws, req) => {
           ws.send(JSON.stringify({ type: "auth_ok", action, username: ws.username, moderator: isModerator(ws) }));
         }
         // Giris/kayit basarili oldu: klan bilgisi + sohbet gecmisi + bekleyen davetler
+        await loadRepClan(ws);
         await sendMyClanInfo(ws, "all");
         await sendClanInvites(ws);
       } catch (err) {
@@ -930,11 +1006,22 @@ wss.on("connection", async (ws, req) => {
       return;
     }
 
-    // --- Klan (cok klanli, rollu, kalici sohbetli) ---
+    // --- Klan (cok klanli, 4 rutbe, davet, yasak, kalici sohbet) ---
     if (data.type && String(data.type).includes("clan") && !ws.username && data.type !== "list_clans") {
       clanError(ws, "Oturumun düşmüş (bağlantı yenilenmiş olabilir). Hesabım'dan tekrar giriş yap.");
       return;
     }
+
+    // Bir klanda islem yapanin ve hedefin rutbesini getirir
+    const clanRanks = async (nameLower, aLower, tLower) => {
+      const r = await pool.query(
+        "SELECT username_lower, role FROM clan_members WHERE clan_name_lower=$1 AND username_lower = ANY($2)",
+        [nameLower, [aLower, tLower]]
+      );
+      const m = {};
+      r.rows.forEach((x) => (m[x.username_lower] = x.role));
+      return { a: m[aLower] ?? null, t: m[tLower] ?? null };
+    };
 
     if (data.type === "create_clan") {
       const meLower = ws.username.toLocaleLowerCase("tr");
@@ -943,18 +1030,24 @@ wss.on("connection", async (ws, req) => {
         return;
       }
       const name = typeof data.name === "string" ? data.name.trim() : "";
+      const title = (typeof data.title === "string" ? data.title.trim() : "").slice(0, 40) || name;
       const description = typeof data.description === "string" ? data.description.trim().slice(0, 200) : "";
-      if (!CLAN_NAME_REGEX.test(name)) { clanError(ws, "Klan adı 3-30 karakter olmalı."); return; }
-      if (containsBannedWord(name) || containsBannedWord(description)) {
-        clanError(ws, "Klan adı/açıklaması uygunsuz içerik barındırıyor.");
+      const photo = typeof data.photo_data === "string" && data.photo_data ? data.photo_data : null;
+      const hidden = !!data.hidden;
+      const joinMode = data.open ? "open" : "invite";
+      if (!CLAN_NEW_NAME_REGEX.test(name)) { clanError(ws, "Klan adı 2-30 karakter olmalı: harf, rakam ve . - _ kullanılabilir."); return; }
+      if (containsBannedWord(name) || containsBannedWord(title) || containsBannedWord(description)) {
+        clanError(ws, "Klan adı/başlığı/açıklaması uygunsuz içerik barındırıyor.");
         return;
       }
+      if (photo && photo.length > MAX_CLAN_PHOTO_BYTES) { clanError(ws, "Avatar çok büyük."); return; }
       const nameLower = name.toLocaleLowerCase("tr");
       try {
         const result = await pool.query(
-          `INSERT INTO clans (name_lower, name, description, owner_username) VALUES ($1,$2,$3,$4)
+          `INSERT INTO clans (name_lower, name, title, description, owner_username, photo_data, join_mode, hidden)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
            ON CONFLICT (name_lower) DO NOTHING RETURNING name_lower`,
-          [nameLower, name, description, ws.username]
+          [nameLower, name, title, description, ws.username, photo, joinMode, hidden]
         );
         if (!result.rows.length) { clanError(ws, "Bu klan adı zaten alınmış."); return; }
         await pool.query(
@@ -963,7 +1056,7 @@ wss.on("connection", async (ws, req) => {
         );
         cacheAddMember(nameLower, meLower);
         await sendMyClanInfo(ws, [nameLower]);
-        await clanSystem(nameLower, `${name} klanı ${ws.username} tarafından kuruldu.`);
+        await clanSystem(nameLower, `${title} klanı ${ws.username} tarafından kuruldu.`);
       } catch (err) {
         console.error("create_clan hatasi:", err);
         clanError(ws, "Sunucu hatası, tekrar dene.");
@@ -972,21 +1065,24 @@ wss.on("connection", async (ws, req) => {
     }
 
     if (data.type === "list_clans") {
+      const q = normClan(data.q);
       try {
+        const esc = q.replace(/[\\%_]/g, "\\$&");
         const res = await pool.query(`
-          SELECT c.name, c.description, c.photo_data, c.owner_username, c.join_mode,
+          SELECT c.name, c.title, c.description, c.photo_data, c.join_mode,
                  COUNT(m.username_lower) AS member_count
           FROM clans c LEFT JOIN clan_members m ON m.clan_name_lower = c.name_lower
-          GROUP BY c.name_lower, c.name, c.description, c.photo_data, c.owner_username, c.join_mode
+          WHERE (c.hidden = FALSE OR c.name_lower = $1)
+            AND ($1 = '' OR c.name_lower LIKE '%' || $2 || '%' OR LOWER(c.title) LIKE '%' || $2 || '%')
+          GROUP BY c.name_lower, c.name, c.title, c.description, c.photo_data, c.join_mode
           ORDER BY member_count DESC
-          LIMIT 100
-        `);
+          LIMIT 50
+        `, [q, esc]);
         sendTo(ws, {
           type: "clans_list",
           clans: res.rows.map((r) => ({
-            name: r.name, description: r.description, photo_data: r.photo_data,
-            owner: r.owner_username, join_mode: r.join_mode || "open",
-            memberCount: Number(r.member_count)
+            name: r.name, title: r.title || r.name, description: r.description, photo_data: r.photo_data,
+            join_mode: r.join_mode || "open", memberCount: Number(r.member_count)
           }))
         });
       } catch (err) {
@@ -995,15 +1091,17 @@ wss.on("connection", async (ws, req) => {
       return;
     }
 
+    if (data.type === "refresh_clans") {
+      try { await sendMyClanInfo(ws); await sendClanInvites(ws); } catch (err) { console.error("refresh hatasi:", err); }
+      return;
+    }
+
     if (data.type === "join_clan") {
       const nameLower = normClan(data.name);
       try {
         const clanRes = await pool.query("SELECT join_mode FROM clans WHERE name_lower=$1", [nameLower]);
         if (!clanRes.rows.length) { clanError(ws, "Klan bulunamadı."); return; }
-        if ((clanRes.rows[0].join_mode || "open") !== "open") {
-          clanError(ws, "Bu klan sadece davetle üye alıyor.");
-          return;
-        }
+        if ((clanRes.rows[0].join_mode || "open") !== "open") { clanError(ws, "Bu klan sadece davetle üye alıyor."); return; }
         await addMemberToClan(ws, nameLower);
       } catch (err) {
         console.error("join_clan hatasi:", err);
@@ -1021,10 +1119,9 @@ wss.on("connection", async (ws, req) => {
         await pool.query("DELETE FROM clan_members WHERE clan_name_lower=$1 AND username_lower=$2", [nameLower, meLower]);
         cacheRemoveMember(nameLower, meLower);
         if (role === "owner") {
-          // Yonetim once moderatorlere, yoksa en eski uyeye gecer
           const next = await pool.query(
             `SELECT username, username_lower FROM clan_members WHERE clan_name_lower=$1
-             ORDER BY (role='mod') DESC, joined_at ASC LIMIT 1`,
+             ORDER BY (role='mod') DESC, (role='senior') DESC, joined_at ASC LIMIT 1`,
             [nameLower]
           );
           if (next.rows.length) {
@@ -1034,7 +1131,7 @@ wss.on("connection", async (ws, req) => {
             await clanSystem(nameLower, `${ws.username} ayrıldı, klan sahipliği ${n.username} kullanıcısına geçti.`);
             await refreshClanMembers(nameLower);
           } else {
-            await pool.query("DELETE FROM clans WHERE name_lower=$1", [nameLower]); // sohbet/davetler CASCADE ile silinir
+            await pool.query("DELETE FROM clans WHERE name_lower=$1", [nameLower]);
             clanMembersCache.delete(nameLower);
           }
         } else {
@@ -1048,28 +1145,50 @@ wss.on("connection", async (ws, req) => {
       return;
     }
 
-    if (data.type === "kick_clan_member") {
+    if (data.type === "kick_clan_member" || data.type === "ban_clan_member") {
+      const ban = data.type === "ban_clan_member";
       const meLower = ws.username.toLocaleLowerCase("tr");
       const nameLower = normClan(data.clan);
       const targetLower = normClan(data.username);
       if (!myClanSet(meLower).has(nameLower) || !targetLower || targetLower === meLower) return;
       try {
-        const myRole = await getMyRole(nameLower, meLower);
-        const targetRole = await getMyRole(nameLower, targetLower);
-        if (!targetRole) return;
-        const allowed = myRole === "owner" || (myRole === "mod" && targetRole === "member");
-        if (!allowed) { clanError(ws, "Bu üyeyi çıkarma yetkin yok."); return; }
+        const { a, t } = await clanRanks(nameLower, meLower, targetLower);
+        if (!t) return;
+        if (RANK[a] < RANK.mod || RANK[a] <= RANK[t]) { clanError(ws, "Bu üyeye işlem yapma yetkin yok."); return; }
         await pool.query("DELETE FROM clan_members WHERE clan_name_lower=$1 AND username_lower=$2", [nameLower, targetLower]);
         cacheRemoveMember(nameLower, targetLower);
-        await clanSystem(nameLower, `${data.username} klandan çıkarıldı.`);
+        if (ban) {
+          await pool.query(
+            "INSERT INTO clan_bans (clan_name_lower, username_lower, username, banned_by) VALUES ($1,$2,$3,$4) ON CONFLICT DO NOTHING",
+            [nameLower, targetLower, data.username, ws.username]
+          );
+          await pool.query("DELETE FROM clan_invites WHERE clan_name_lower=$1 AND to_lower=$2", [nameLower, targetLower]);
+        }
+        await clanSystem(nameLower, ban ? `${data.username} klandan yasaklandı.` : `${data.username} klandan çıkarıldı.`);
         await refreshClanMembers(nameLower);
         const targetWs = onlineByUsername.get(targetLower);
         if (targetWs) {
           await sendMyClanInfo(targetWs);
-          clanError(targetWs, "Bir klandan çıkarıldın.");
+          clanError(targetWs, ban ? "Bir klandan yasaklandın." : "Bir klandan çıkarıldın.");
         }
       } catch (err) {
-        console.error("kick_clan_member hatasi:", err);
+        console.error("kick/ban hatasi:", err);
+      }
+      return;
+    }
+
+    if (data.type === "unban_clan_member") {
+      const meLower = ws.username.toLocaleLowerCase("tr");
+      const nameLower = normClan(data.clan);
+      const targetLower = normClan(data.username);
+      if (!myClanSet(meLower).has(nameLower) || !targetLower) return;
+      try {
+        const role = await getMyRole(nameLower, meLower);
+        if (RANK[role] < RANK.mod) { clanError(ws, "Yasağı kaldırma yetkin yok."); return; }
+        await pool.query("DELETE FROM clan_bans WHERE clan_name_lower=$1 AND username_lower=$2", [nameLower, targetLower]);
+        await refreshClanMembers(nameLower);
+      } catch (err) {
+        console.error("unban hatasi:", err);
       }
       return;
     }
@@ -1078,16 +1197,18 @@ wss.on("connection", async (ws, req) => {
       const meLower = ws.username.toLocaleLowerCase("tr");
       const nameLower = normClan(data.clan);
       const targetLower = normClan(data.username);
-      const newRole = data.role === "mod" ? "mod" : data.role === "member" ? "member" : null;
+      const newRole = ["mod", "senior", "member"].includes(data.role) ? data.role : null;
       if (!newRole || !myClanSet(meLower).has(nameLower) || targetLower === meLower) return;
       try {
-        if ((await getMyRole(nameLower, meLower)) !== "owner") { clanError(ws, "Sadece klan sahibi rol değiştirebilir."); return; }
-        const targetRole = await getMyRole(nameLower, targetLower);
-        if (!targetRole || targetRole === "owner") return;
+        const { a, t } = await clanRanks(nameLower, meLower, targetLower);
+        if (!t) return;
+        if (RANK[a] < RANK.mod || RANK[a] <= RANK[t] || RANK[a] <= RANK[newRole]) {
+          clanError(ws, "Bu rütbeyi verme yetkin yok.");
+          return;
+        }
         await pool.query("UPDATE clan_members SET role=$3 WHERE clan_name_lower=$1 AND username_lower=$2", [nameLower, targetLower, newRole]);
-        await clanSystem(nameLower, newRole === "mod"
-          ? `${data.username} klan moderatörü yapıldı.`
-          : `${data.username} kullanıcısının moderatörlüğü kaldırıldı.`);
+        const label = { mod: "Moderatör", senior: "Kıdemli Üye", member: "Üye" }[newRole];
+        await clanSystem(nameLower, `${data.username} kullanıcısının rütbesi: ${label}.`);
         await refreshClanMembers(nameLower);
       } catch (err) {
         console.error("set_clan_role hatasi:", err);
@@ -1101,11 +1222,8 @@ wss.on("connection", async (ws, req) => {
       const targetLower = normClan(data.username);
       if (!myClanSet(meLower).has(nameLower) || !targetLower || targetLower === meLower) return;
       try {
-        if ((await getMyRole(nameLower, meLower)) !== "owner") { clanError(ws, "Sadece klan sahibi klanı devredebilir."); return; }
-        const t = await pool.query(
-          "SELECT username FROM clan_members WHERE clan_name_lower=$1 AND username_lower=$2",
-          [nameLower, targetLower]
-        );
+        if ((await getMyRole(nameLower, meLower)) !== "owner") { clanError(ws, "Sadece kurucu klanı devredebilir."); return; }
+        const t = await pool.query("SELECT username FROM clan_members WHERE clan_name_lower=$1 AND username_lower=$2", [nameLower, targetLower]);
         if (!t.rows.length) { clanError(ws, "Bu kullanıcı klanın üyesi değil."); return; }
         const newOwner = t.rows[0].username;
         await pool.query("UPDATE clans SET owner_username=$1 WHERE name_lower=$2", [newOwner, nameLower]);
@@ -1124,25 +1242,66 @@ wss.on("connection", async (ws, req) => {
       const nameLower = normClan(data.clan);
       if (!myClanSet(meLower).has(nameLower)) return;
       try {
-        const role = await getMyRole(nameLower, meLower);
-        if (role !== "owner" && role !== "mod") { clanError(ws, "Bunun için moderatör veya sahip olmalısın."); return; }
+        if ((await getMyRole(nameLower, meLower)) !== "owner") { clanError(ws, "Klanı sadece kurucu düzenleyebilir."); return; }
+        const title = typeof data.title === "string" ? data.title.trim().slice(0, 40) : undefined;
         const description = typeof data.description === "string" ? data.description.trim().slice(0, 200) : undefined;
-        const photo_data = typeof data.photo_data === "string" ? data.photo_data : undefined;
-        const join_mode = data.join_mode === "open" || data.join_mode === "invite" ? data.join_mode : undefined;
-        if (join_mode !== undefined && role !== "owner") { clanError(ws, "Üyelik modunu sadece klan sahibi değiştirebilir."); return; }
-        if (description !== undefined && containsBannedWord(description)) { clanError(ws, "Açıklama uygunsuz içerik barındırıyor."); return; }
-        if (photo_data && photo_data.length > MAX_CLAN_PHOTO_BYTES) { clanError(ws, "Fotoğraf çok büyük."); return; }
-        await pool.query(
-          `UPDATE clans SET description=COALESCE($1,description), photo_data=COALESCE($2,photo_data),
-           join_mode=COALESCE($3,join_mode) WHERE name_lower=$4`,
-          [description, photo_data, join_mode, nameLower]
-        );
-        if (join_mode !== undefined) {
-          await clanSystem(nameLower, join_mode === "open" ? "Klan artık herkese açık." : "Klan artık sadece davetle üye alıyor.");
+        const photo_data = typeof data.photo_data === "string" && data.photo_data ? data.photo_data : undefined;
+        const join_mode = typeof data.open === "boolean" ? (data.open ? "open" : "invite") : undefined;
+        const hidden = typeof data.hidden === "boolean" ? data.hidden : undefined;
+        if ((title !== undefined && containsBannedWord(title)) || (description !== undefined && containsBannedWord(description))) {
+          clanError(ws, "Başlık/açıklama uygunsuz içerik barındırıyor.");
+          return;
         }
+        if (title === "") { clanError(ws, "Başlık boş olamaz."); return; }
+        if (photo_data && photo_data.length > MAX_CLAN_PHOTO_BYTES) { clanError(ws, "Avatar çok büyük."); return; }
+        await pool.query(
+          `UPDATE clans SET title=COALESCE($1,title), description=COALESCE($2,description), photo_data=COALESCE($3,photo_data),
+           join_mode=COALESCE($4,join_mode), hidden=COALESCE($5,hidden) WHERE name_lower=$6`,
+          [title, description, photo_data, join_mode, hidden, nameLower]
+        );
+        if (data.clear_photo === true) await pool.query("UPDATE clans SET photo_data=NULL WHERE name_lower=$1", [nameLower]);
+        sendTo(ws, { type: "clan_notice", text: "Klan güncellendi." });
         await refreshClanMembers(nameLower);
       } catch (err) {
         console.error("update_clan hatasi:", err);
+      }
+      return;
+    }
+
+    if (data.type === "delete_clan") {
+      const meLower = ws.username.toLocaleLowerCase("tr");
+      const nameLower = normClan(data.clan);
+      if (!myClanSet(meLower).has(nameLower)) return;
+      try {
+        if ((await getMyRole(nameLower, meLower)) !== "owner") { clanError(ws, "Klanı sadece kurucu silebilir."); return; }
+        const members = [...(clanMembersCache.get(nameLower) || [])];
+        await pool.query("DELETE FROM clans WHERE name_lower=$1", [nameLower]); // uye/sohbet/davet/yasak CASCADE
+        await pool.query("UPDATE users SET rep_clan=NULL WHERE rep_clan=$1", [nameLower]);
+        for (const m of members) {
+          cacheRemoveMember(nameLower, m);
+          if (repClanByUser.get(m) === nameLower) repClanByUser.delete(m);
+        }
+        clanMembersCache.delete(nameLower);
+        for (const m of members) {
+          const mWs = onlineByUsername.get(m);
+          if (mWs) { await sendMyClanInfo(mWs); if (mWs !== ws) clanError(mWs, "Üyesi olduğun bir klan silindi."); }
+        }
+      } catch (err) {
+        console.error("delete_clan hatasi:", err);
+      }
+      return;
+    }
+
+    if (data.type === "set_rep_clan") {
+      const meLower = ws.username.toLocaleLowerCase("tr");
+      const nameLower = normClan(data.clan);
+      try {
+        if (nameLower && !myClanSet(meLower).has(nameLower)) return;
+        await pool.query("UPDATE users SET rep_clan=$1 WHERE username_lower=$2", [nameLower || null, meLower]);
+        if (nameLower) repClanByUser.set(meLower, nameLower); else repClanByUser.delete(meLower);
+        await sendMyClanInfo(ws);
+      } catch (err) {
+        console.error("set_rep_clan hatasi:", err);
       }
       return;
     }
@@ -1158,10 +1317,12 @@ wss.on("connection", async (ws, req) => {
       lastInviteAt.set(meLower, nowI);
       try {
         const role = await getMyRole(nameLower, meLower);
-        if (role !== "owner" && role !== "mod") { clanError(ws, "Davet göndermek için moderatör veya sahip olmalısın."); return; }
+        if (RANK[role] < RANK.senior) { clanError(ws, "Davet göndermek için Kıdemli Üye veya üstü olmalısın."); return; }
         const u = await pool.query("SELECT username FROM users WHERE username_lower=$1", [targetLower]);
         if (!u.rows.length) { clanError(ws, "Böyle bir kullanıcı yok."); return; }
         if (clanMembersCache.get(nameLower)?.has(targetLower)) { clanError(ws, "Bu kullanıcı zaten klanda."); return; }
+        const bn = await pool.query("SELECT 1 FROM clan_bans WHERE clan_name_lower=$1 AND username_lower=$2", [nameLower, targetLower]);
+        if (bn.rows.length) { clanError(ws, "Bu kullanıcı klandan yasaklı, önce yasağı kaldır."); return; }
         const cnt = await pool.query("SELECT COUNT(*) AS n FROM clan_invites WHERE to_lower=$1", [targetLower]);
         if (Number(cnt.rows[0].n) >= 30) { clanError(ws, "Bu kullanıcının bekleyen davet kutusu dolu."); return; }
         await pool.query(
@@ -1169,10 +1330,29 @@ wss.on("connection", async (ws, req) => {
           [nameLower, targetLower, ws.username]
         );
         sendTo(ws, { type: "clan_notice", text: `${u.rows[0].username} kullanıcısına davet gönderildi.` });
+        await refreshClanMembers(nameLower);
         const tWs = onlineByUsername.get(targetLower);
         if (tWs) await sendClanInvites(tWs);
       } catch (err) {
         console.error("invite_to_clan hatasi:", err);
+      }
+      return;
+    }
+
+    if (data.type === "cancel_clan_invite") {
+      const meLower = ws.username.toLocaleLowerCase("tr");
+      const nameLower = normClan(data.clan);
+      const targetLower = normClan(data.username);
+      if (!myClanSet(meLower).has(nameLower)) return;
+      try {
+        const role = await getMyRole(nameLower, meLower);
+        if (RANK[role] < RANK.mod) { clanError(ws, "Daveti iptal etme yetkin yok."); return; }
+        await pool.query("DELETE FROM clan_invites WHERE clan_name_lower=$1 AND to_lower=$2", [nameLower, targetLower]);
+        await refreshClanMembers(nameLower);
+        const tWs = onlineByUsername.get(targetLower);
+        if (tWs) await sendClanInvites(tWs);
+      } catch (err) {
+        console.error("cancel invite hatasi:", err);
       }
       return;
     }
@@ -1186,15 +1366,13 @@ wss.on("connection", async (ws, req) => {
       const meLower = ws.username.toLocaleLowerCase("tr");
       const nameLower = normClan(data.clan);
       try {
-        const inv = await pool.query(
-          "SELECT 1 FROM clan_invites WHERE clan_name_lower=$1 AND to_lower=$2",
-          [nameLower, meLower]
-        );
+        const inv = await pool.query("SELECT 1 FROM clan_invites WHERE clan_name_lower=$1 AND to_lower=$2", [nameLower, meLower]);
         if (!inv.rows.length) { await sendClanInvites(ws); return; }
         if (data.accept) {
-          await addMemberToClan(ws, nameLower); // limit/uyelik hatalarini kendisi bildirir; davet basarida silinir
+          await addMemberToClan(ws, nameLower);
         } else {
           await pool.query("DELETE FROM clan_invites WHERE clan_name_lower=$1 AND to_lower=$2", [nameLower, meLower]);
+          await refreshClanMembers(nameLower);
         }
         await sendClanInvites(ws);
       } catch (err) {
@@ -1385,6 +1563,7 @@ wss.on("connection", async (ws, req) => {
       return;
     }
 
+    if (ws.username) creditClanPixel(ws.username.toLocaleLowerCase("tr"));
     broadcast({ type: "update", x, y, color });
   });
 });
