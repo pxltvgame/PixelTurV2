@@ -537,6 +537,36 @@
   #humanBtns{display:flex;gap:8px;margin-top:10px}
   #humanBtns button{flex:1;padding:10px;font-size:15px;cursor:pointer;background:var(--btn-bg);color:var(--btn-fg);border:1px solid var(--win-border)}
   #humanOkBtn{font-weight:bold}
+
+  /* --- Klan paneli (cok klan, roller, davet) --- */
+  #clanMsgLine{font-size:12.5px;margin-bottom:8px}
+  #clanMsgLine.err{color:#d32f2f} #clanMsgLine.ok{color:#2e9e5b}
+  #clanInvitesList{list-style:none;margin:0 0 6px;padding:0;display:flex;flex-direction:column;gap:6px}
+  #clanInvitesList li{display:flex;align-items:center;justify-content:space-between;gap:6px;background:var(--row-bg);color:var(--win-fg);padding:6px 10px;font-size:13px;border:1px solid var(--win-border)}
+  .clanCard{border:1px solid var(--win-border);margin-bottom:8px;background:var(--row-bg);color:var(--win-fg)}
+  .clanCard summary{display:flex;align-items:center;gap:8px;padding:8px 10px;cursor:pointer;font-size:14px;list-style:none}
+  .clanCard summary::-webkit-details-marker{display:none}
+  .clanThumb{width:28px;height:28px;background:var(--bar-bg) center/cover no-repeat;flex-shrink:0;display:inline-flex;align-items:center;justify-content:center;font-weight:bold;font-size:13px}
+  .clanCardName{font-weight:bold;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .roleBadge{font-size:10.5px;padding:1px 6px;border:1px solid var(--win-border);white-space:nowrap}
+  .roleBadge.owner{background:#FFD700;color:#000} .roleBadge.mod{background:#7ecbff;color:#000}
+  .clanCount{font-size:11.5px;color:var(--muted);white-space:nowrap}
+  .clanCardBody{padding:8px 10px 10px;border-top:1px solid var(--win-border)}
+  .clanDesc{font-size:12.5px;color:var(--muted);margin-bottom:8px;word-break:break-word}
+  .clanRow{display:flex;gap:6px;margin-bottom:6px}
+  #clanPanelInner .clanRow input,#clanPanelInner .clanRow select{flex:1;min-width:0;margin-bottom:0}
+  .clanRow select{background:var(--input-bg);color:var(--win-fg);border:1px solid var(--win-border);padding:7px;font-size:13px}
+  .clanBtn{background:var(--btn-bg);color:var(--btn-fg);border:1px solid var(--win-border);padding:7px 10px;font-size:12.5px;cursor:pointer;font-family:Arial,sans-serif}
+  .clanBtn.danger{background:#555;color:#fff}
+  .clanMembers{list-style:none;margin:8px 0;padding:0;max-height:180px;overflow-y:auto;display:flex;flex-direction:column;gap:4px}
+  .clanMembers li{display:flex;align-items:center;justify-content:space-between;gap:6px;background:var(--win-bg);padding:5px 8px;font-size:13px}
+  .clanMembers .mName{cursor:pointer;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .clanMembers .mActs{display:flex;gap:4px;flex-shrink:0}
+  .miniBtn{background:var(--btn-bg);color:var(--btn-fg);border:1px solid var(--win-border);padding:3px 7px;font-size:11px;cursor:pointer}
+  .miniBtn.danger{background:#c0392b;color:#fff;border-color:#c0392b}
+  .clanBrowseDesc{font-size:11.5px;color:var(--muted)}
+  #closeClanBtn{margin-top:14px}
+  #loadOlderBtn{display:block;margin:6px auto;background:var(--btn-bg);color:var(--btn-fg);border:1px solid var(--win-border);padding:5px 12px;font-size:12px;cursor:pointer}
 </style>
 </head>
 <body>
@@ -677,7 +707,7 @@
       <li><b>Sürükle</b>: kaydır. <b>Tekerlek / iki parmak</b>: yakınlaştır.</li>
       <li>Hücreye <b>çift tıkla/dokun</b>: koordinatı kopyalar. Sohbete yapıştırırsan tıklayan herkes oraya gider.</li>
       <li>Sohbette bir <b>isme tıkla</b>: profil, arkadaş ekleme ve DM.</li>
-      <li>Sohbet kanalları sağ alttaki seçiciden değişir; klana girince <b>#klan</b> kanalı açılır.</li>
+      <li>Sohbet kanalları sağ alttaki seçiciden değişir; girdiğin her klanın (en fazla 5) kendi sohbet kanalı listeye eklenir, klan mesajları hiç silinmez.</li>
     </ul>
     <button id="closeHelpBtn" type="button">Kapat</button>
   </div>
@@ -723,36 +753,31 @@
 <div id="clanPanel" class="hidden">
   <div id="clanPanelInner">
     <h2><svg class="ic"><use href="#i-shield"/></svg>Klanlar</h2>
+    <div id="clanMsgLine"></div>
 
-    <div id="noClanView">
+    <div id="clanInvitesSection" class="hidden">
+      <h3 class="accountSectionTitle">Gelen Klan Davetleri</h3>
+      <ul id="clanInvitesList"></ul>
+    </div>
+
+    <div id="myClansSection" class="hidden">
+      <h3 class="accountSectionTitle" id="myClansTitle">Klanlarım</h3>
+      <div id="myClansList"></div>
+    </div>
+
+    <div id="createClanBox" class="hidden">
+      <h3 class="accountSectionTitle">Yeni Klan Kur</h3>
       <form id="createClanForm">
         <input id="clanNameInput" type="text" maxlength="30" placeholder="Yeni klan adı">
         <input id="clanDescInput" type="text" maxlength="200" placeholder="Kısa açıklama (opsiyonel)">
         <button type="submit">Klan Kur</button>
       </form>
-      <h3 class="accountSectionTitle">Mevcut Klanlar</h3>
-      <ul id="clansBrowseList"><li class="chatEmpty">Yükleniyor...</li></ul>
     </div>
 
-    <div id="myClanView" class="hidden">
-      <div id="myClanHeader">
-        <div id="myClanPhoto">+</div>
-        <input id="clanPhotoFileInput" type="file" accept="image/*" class="hidden">
-        <div>
-          <div id="myClanName"></div>
-          <div id="myClanDesc"></div>
-        </div>
-      </div>
-      <div id="myClanOwnerTools" class="hidden">
-        <input id="clanDescEditInput" type="text" maxlength="200" placeholder="Açıklamayı güncelle">
-        <button id="clanDescSaveBtn" type="button">Açıklamayı Kaydet</button>
-      </div>
-      <h3 class="accountSectionTitle">Üyeler</h3>
-      <ul id="clanMembersList"></ul>
-      <p class="clanChatHint">Klan sohbeti için ana menüdeki <b>Sohbet</b> butonundan <b>#klan</b> kanalını seç.</p>
-      <button id="leaveClanBtn" type="button">Klandan Ayrıl</button>
-    </div>
+    <h3 class="accountSectionTitle">Mevcut Klanlar</h3>
+    <ul id="clansBrowseList" style="max-height:200px"><li class="chatEmpty">Yükleniyor...</li></ul>
 
+    <input id="clanPhotoFileInput" type="file" accept="image/*" class="hidden">
     <button id="closeClanBtn">Kapat</button>
   </div>
 </div>
@@ -788,7 +813,7 @@
           <button type="button" class="channelItem" data-channel="asia"># asia</button>
           <button type="button" class="channelItem" data-channel="europe"># europe</button>
           <button type="button" class="channelItem" data-channel="america"># america</button>
-          <button type="button" class="channelItem hidden" id="clanChannelItem" data-channel="clan"># klan</button>
+          <div id="clanChannelItems"></div>
         </div>
         <button id="channelPickerBtn" type="button">tr ▾</button>
       </div>
@@ -966,9 +991,10 @@ const chatSendBtn = document.getElementById("chatSendBtn");
 let chatCooldown = false;
 let loggedInIsMod = false;
 let currentChannel = "tr";
-const channelData = new Map(["tr","int","europe","asia","america","clan"].map(c=>[c,[]]));
+const channelData = new Map(["tr","int","europe","asia","america"].map(c=>[c,[]]));
+const isClanCh = ch=>typeof ch==="string" && ch.startsWith("clan:");
 
-const CHANNEL_LABELS={tr:"tr",int:"int",asia:"asia",europe:"europe",america:"america",clan:"klan"};
+const CHANNEL_LABELS={tr:"tr",int:"int",asia:"asia",europe:"europe",america:"america"};
 const channelPickerBtn=document.getElementById("channelPickerBtn");
 const channelPickerList=document.getElementById("channelPickerList");
 const chatChannelLabel=document.getElementById("chatChannelLabel");
@@ -991,15 +1017,22 @@ function toggleTheme(){applyTheme(document.documentElement.dataset.theme==="dark
 document.getElementById("chatThemeBtn").addEventListener("click",toggleTheme);
 document.getElementById("menuThemeBtn").addEventListener("click",toggleTheme);
 
-function renderChannelMessages(){
+function renderChannelMessages(keepScroll){
+  const prevFromBottom = chatMessages.scrollHeight - chatMessages.scrollTop;
   chatMessages.innerHTML = "";
   const list = channelData.get(currentChannel) || [];
+  if(isClanCh(currentChannel) && clanHasMore.get(currentChannel) && list.length){
+    const li=document.createElement("li");
+    const b=document.createElement("button"); b.type="button"; b.id="loadOlderBtn"; b.textContent="Eski mesajları yükle";
+    b.addEventListener("click", ()=>wsSend({type:"clan_history", clan:currentChannel.slice(5), before:list[0].id}));
+    li.appendChild(b); chatMessages.appendChild(li);
+  }
   if(list.length===0){
     chatMessages.innerHTML = '<li class="chatEmpty">Henüz mesaj yok, ilk yazan sen ol!</li>';
     return;
   }
   list.forEach(appendMessageToDOM);
-  chatMessages.scrollTop = chatMessages.scrollHeight;
+  chatMessages.scrollTop = keepScroll ? Math.max(0, chatMessages.scrollHeight - prevFromBottom) : chatMessages.scrollHeight;
 }
 
 document.getElementById("chatBtn").addEventListener("click", openChatPanel);
@@ -1124,7 +1157,7 @@ function appendMessageToDOM(msg){
   const timeSpan = document.createElement("span");
   timeSpan.className = "chatTime"; timeSpan.textContent = fmtTime(msg.ts);
   meta.appendChild(nameSpan); meta.appendChild(timeSpan);
-  if(loggedInIsMod && !msg.system && msg.id!==undefined && !msg.removed){
+  if(loggedInIsMod && !msg.system && msg.id!==undefined && !msg.removed && !isClanCh(msg.channel)){
     const del=document.createElement("button");
     del.type="button"; del.className="modDelBtn"; del.appendChild(icEl("trash",true)); del.title="Mesajı sil";
     del.addEventListener("click", ()=>socket.send(JSON.stringify({type:"mod_delete", id:msg.id, channel:msg.channel||currentChannel})));
@@ -1135,7 +1168,7 @@ function appendMessageToDOM(msg){
   body.appendChild(meta); body.appendChild(textDiv);
   li.appendChild(body);
   chatMessages.appendChild(li);
-  while(chatMessages.children.length > 100) chatMessages.removeChild(chatMessages.firstChild);
+  while(chatMessages.children.length > (isClanCh(currentChannel)?3000:100)) chatMessages.removeChild(chatMessages.firstChild);
 }
 
 function addChatMessage(msg){
@@ -1143,7 +1176,8 @@ function addChatMessage(msg){
   if(!channelData.has(ch)) channelData.set(ch, []);
   const list = channelData.get(ch);
   list.push(msg);
-  while(list.length > 100) list.shift();
+  const cap = isClanCh(ch) ? 3000 : 100;
+  while(list.length > cap) list.shift();
   if(ch === currentChannel){
     const emptyMsg = chatMessages.querySelector(".chatEmpty");
     if(emptyMsg) emptyMsg.remove();
@@ -1174,7 +1208,7 @@ function removeChatMessage(id, channel, by){
 
 function clearChat(ch){
   if(ch && channelData.has(ch)) channelData.set(ch, []);
-  else channelData.forEach((v,k)=>{ if(k!=="clan") channelData.set(k, []); });
+  else channelData.forEach((v,k)=>{ if(!isClanCh(k)) channelData.set(k, []); });
   renderChannelMessages();
 }
 
@@ -1198,7 +1232,7 @@ function sendChat(){
     openChatPanel(); // oturum dusmus olabilir, hesap paneline yonlendir
     return;
   }
-  if(currentChannel==="clan") socket.send(JSON.stringify({type:"clan_chat", text:text.slice(0,200)}));
+  if(isClanCh(currentChannel)) socket.send(JSON.stringify({type:"clan_chat", clan:currentChannel.slice(5), text:text.slice(0,200)}));
   else socket.send(JSON.stringify({type:"chat", text:text.slice(0,200), channel:currentChannel}));
   chatTextInput.value = "";
   chatCooldown = true;
@@ -1286,7 +1320,7 @@ function setModState(v){
   renderChannelMessages();
 }
 document.getElementById("chatClearBtn").addEventListener("click", ()=>{
-  if(currentChannel==="clan") return;
+  if(isClanCh(currentChannel)) return;
   if(confirm("Bu kanalın tüm mesajları herkes için silinsin mi?")) socket.send(JSON.stringify({type:"mod_clear_channel", channel:currentChannel}));
 });
 
@@ -1294,6 +1328,7 @@ function logout(){
   if(socket && socket.readyState===WebSocket.OPEN) socket.send(JSON.stringify({type:"logout"}));
   loggedInUsername = null;
   setModState(false);
+  handleMyClans({clans:[]}); clanInvites=[]; renderClanInvites();
   localStorage.removeItem("placeturk_logged_in_as");
   updateLoggedInUI();
 }
@@ -1451,8 +1486,8 @@ function renderProfile(data){
     profileAvatarBig.style.backgroundImage = "";
     profileAvatarBig.textContent = data.username.charAt(0).toUpperCase();
   }
-  if(data.clan){
-    setIconText(profileClanTag,"shield",data.clan);
+  if(data.clans && data.clans.length){
+    setIconText(profileClanTag,"shield",data.clans.join(", "));
     profileClanTag.classList.remove("hidden");
   } else profileClanTag.classList.add("hidden");
 
@@ -1575,31 +1610,40 @@ function handleIncomingDm(data){
 }
 function handleDmError(data){ showAccountMsg(data.reason, "error"); }
 
-/* --- Klan --- */
+/* --- Klan (en fazla 5 klan, rol sistemi, davet, kalici sohbet) --- */
+const MAX_CLANS = 5;
+const ROLE_LABEL = { owner:"Sahip", mod:"Moderatör", member:"Üye" };
 const clanPanel = document.getElementById("clanPanel");
-const noClanView = document.getElementById("noClanView");
-const myClanView = document.getElementById("myClanView");
-let myClanData = null;
+let myClans = [];
+let clanInvites = [];
+let lastClansList = [];
+let photoTargetClan = null;
+const clanHasMore = new Map();
+const openClanCards = new Set();
+
+function wsSend(o){ if(socket && socket.readyState===WebSocket.OPEN) socket.send(JSON.stringify(o)); }
+function myRoleIn(c){ const m=c.members.find(x=>x.username===loggedInUsername); return m?m.role:null; }
 
 document.getElementById("clanMenuBtn").addEventListener("click", ()=>{
   clanPanel.classList.remove("hidden");
-  if(!loggedInUsername){
-    showClanMsg("Klan kurmak/katılmak için giriş yapmalısın, ama mevcut klanlara göz atabilirsin.");
-  }
-  if(socket && socket.readyState===WebSocket.OPEN) socket.send(JSON.stringify({type:"list_clans"}));
+  showClanMsg(serverOutdated ? "Sunucu güncel değil: yeni klan sistemi için server.js dosyasını Render'a yükleyip deploy etmen gerekiyor." : loggedInUsername ? "" : "Klan kurmak/katılmak için giriş yapmalısın, ama mevcut klanlara göz atabilirsin.");
+  wsSend({type:"list_clans"});
+  if(loggedInUsername) wsSend({type:"list_clan_invites"});
+  updateClanSections();
 });
 document.getElementById("closeClanBtn").addEventListener("click", ()=>clanPanel.classList.add("hidden"));
 
-function showClanMsg(text){
-  // Basit: tarayici konsoluna degil, ust kisimda kisa bir uyari olarak goster
-  let el = document.getElementById("clanMsgLine");
-  if(!el){
-    el = document.createElement("div");
-    el.id = "clanMsgLine";
-    el.style.cssText = "color:#b00020;font-size:12.5px;margin-bottom:10px;";
-    document.getElementById("clanPanelInner").insertBefore(el, noClanView);
-  }
+function showClanMsg(text, ok){
+  const el = document.getElementById("clanMsgLine");
   el.textContent = text || "";
+  el.className = ok ? "ok" : "err";
+}
+
+function updateClanSections(){
+  const li = !!loggedInUsername;
+  document.getElementById("myClansSection").classList.toggle("hidden", !li || myClans.length===0);
+  document.getElementById("createClanBox").classList.toggle("hidden", !li || myClans.length>=MAX_CLANS);
+  document.getElementById("clanInvitesSection").classList.toggle("hidden", !li || clanInvites.length===0);
 }
 
 document.getElementById("createClanForm").addEventListener("submit", e=>{
@@ -1608,97 +1652,218 @@ document.getElementById("createClanForm").addEventListener("submit", e=>{
   const name = document.getElementById("clanNameInput").value.trim();
   const description = document.getElementById("clanDescInput").value.trim();
   if(!name) return;
-  socket.send(JSON.stringify({type:"create_clan", name, description}));
+  wsSend({type:"create_clan", name, description});
+  document.getElementById("clanNameInput").value=""; document.getElementById("clanDescInput").value="";
 });
 
 function renderClansList(data){
+  if(data) lastClansList = data.clans || [];
   const list = document.getElementById("clansBrowseList");
   list.innerHTML = "";
-  if(!data.clans || data.clans.length===0){
+  if(lastClansList.length===0){
     list.innerHTML = '<li class="chatEmpty">Henüz klan yok, ilk kuran sen ol!</li>';
     return;
   }
-  data.clans.forEach(c=>{
+  lastClansList.forEach(c=>{
     const li=document.createElement("li");
-    const span=document.createElement("span"); span.textContent = `${c.name} (${c.memberCount} üye)`;
-    li.appendChild(span);
-    if(loggedInUsername){
+    const left=document.createElement("div");
+    const t=document.createElement("div");
+    t.textContent = `${c.name} (${c.memberCount} üye)` + (c.join_mode==="invite" ? " · davetle" : "");
+    left.appendChild(t);
+    if(c.description){ const d=document.createElement("div"); d.className="clanBrowseDesc"; d.textContent=c.description; left.appendChild(d); }
+    li.appendChild(left);
+    const mine = myClans.some(m=>m.name.toLocaleLowerCase("tr")===c.name.toLocaleLowerCase("tr"));
+    if(mine){
+      const sp=document.createElement("span"); sp.className="clanBrowseDesc"; sp.textContent="Üyesin"; li.appendChild(sp);
+    } else if(loggedInUsername && c.join_mode!=="invite" && myClans.length<MAX_CLANS){
       const joinBtn=document.createElement("button"); joinBtn.textContent="Katıl";
-      joinBtn.addEventListener("click", ()=>socket.send(JSON.stringify({type:"join_clan", name:c.name})));
+      joinBtn.addEventListener("click", ()=>wsSend({type:"join_clan", name:c.name}));
       li.appendChild(joinBtn);
     }
     list.appendChild(li);
   });
 }
 
-function handleMyClan(data){
-  myClanData = data.clan;
-  const clanItem = document.getElementById("clanChannelItem");
-  if(!data.clan){
-    clanItem.classList.add("hidden");
-    channelData.set("clan", []);
-    if(currentChannel==="clan") setChannel("tr");
-  } else {
-    clanItem.classList.remove("hidden");
-    channelData.set("clan", (data.chatHistory||[]).map(m=>({...m, channel:"clan"})));
-    if(currentChannel==="clan") renderChannelMessages();
-  }
-  if(!data.clan){
-    noClanView.classList.remove("hidden");
-    myClanView.classList.add("hidden");
-    return;
-  }
-  noClanView.classList.add("hidden");
-  myClanView.classList.remove("hidden");
-  document.getElementById("myClanName").textContent = data.clan.name;
-  document.getElementById("myClanDesc").textContent = data.clan.description || "";
-  const photoEl = document.getElementById("myClanPhoto");
-  if(data.clan.photo_data){ photoEl.style.backgroundImage = `url(${data.clan.photo_data})`; photoEl.textContent=""; }
-  else { photoEl.style.backgroundImage=""; photoEl.textContent="+"; }
+/* Sohbet kanal listesini klanlara gore yeniden kurar: her klanin kendi kanali var */
+function rebuildClanChannels(){
+  const keys = new Set(myClans.map(c=>"clan:"+c.key));
+  [...channelData.keys()].filter(k=>isClanCh(k) && !keys.has(k)).forEach(k=>{
+    channelData.delete(k); clanHasMore.delete(k); delete CHANNEL_LABELS[k];
+  });
+  const box = document.getElementById("clanChannelItems");
+  box.innerHTML = "";
+  myClans.forEach(c=>{
+    const k = "clan:"+c.key;
+    if(!channelData.has(k)) channelData.set(k, []);
+    CHANNEL_LABELS[k] = "klan: "+c.name;
+    const b=document.createElement("button");
+    b.type="button"; b.className="channelItem"+(currentChannel===k?" active":""); b.dataset.channel=k;
+    b.textContent = "# klan: "+c.name;
+    b.addEventListener("click", ()=>setChannel(k));
+    box.appendChild(b);
+  });
+  if(isClanCh(currentChannel) && !keys.has(currentChannel)) setChannel("tr");
+  else if(isClanCh(currentChannel)){ chatChannelLabel.textContent = CHANNEL_LABELS[currentChannel]; channelPickerBtn.textContent = CHANNEL_LABELS[currentChannel]+" ▾"; }
+}
 
-  const isOwner = loggedInUsername && data.clan.owner === loggedInUsername;
-  document.getElementById("myClanOwnerTools").classList.toggle("hidden", !isOwner);
+function handleMyClans(data){
+  myClans = data.clans || [];
+  rebuildClanChannels();
+  renderMyClans();
+  renderClansList();
+  updateClanSections();
+}
 
-  const membersList = document.getElementById("clanMembersList");
-  membersList.innerHTML = "";
-  data.clan.members.forEach(m=>{
-    const li=document.createElement("li");
-    const span=document.createElement("span");
-    span.textContent=""; if(m.role==="owner") span.appendChild(icEl("crown")); span.appendChild(document.createTextNode(m.username)); if(m.online) span.appendChild(dotEl(true));
-    li.appendChild(span);
-    if(isOwner && m.username !== loggedInUsername){
-      const kickBtn=document.createElement("button"); kickBtn.textContent="Çıkar";
-      kickBtn.addEventListener("click", ()=>socket.send(JSON.stringify({type:"kick_clan_member", username:m.username})));
-      li.appendChild(kickBtn);
+function memberBtn(label, cls, fn){
+  const b=document.createElement("button");
+  b.type="button"; b.className="miniBtn"+(cls?" "+cls:""); b.textContent=label;
+  b.addEventListener("click", fn);
+  return b;
+}
+
+function renderMyClans(){
+  const wrap = document.getElementById("myClansList");
+  wrap.innerHTML = "";
+  document.getElementById("myClansTitle").textContent = `Klanlarım (${myClans.length}/${MAX_CLANS})`;
+  myClans.forEach(c=>{
+    const role = myRoleIn(c) || "member";
+    const isOwner = role==="owner", canManage = isOwner || role==="mod";
+    const det = document.createElement("details");
+    det.className = "clanCard";
+    if(openClanCards.has(c.key)) det.open = true;
+    det.addEventListener("toggle", ()=>{ if(det.open) openClanCards.add(c.key); else openClanCards.delete(c.key); });
+
+    const sum = document.createElement("summary");
+    const thumb = document.createElement("span"); thumb.className="clanThumb";
+    if(c.photo_data) thumb.style.backgroundImage = `url(${c.photo_data})`; else thumb.textContent = c.name.charAt(0).toUpperCase();
+    const nm = document.createElement("span"); nm.className="clanCardName"; nm.textContent=c.name;
+    const badge = document.createElement("span"); badge.className="roleBadge "+role; badge.textContent=ROLE_LABEL[role];
+    const cnt = document.createElement("span"); cnt.className="clanCount"; cnt.textContent=`${c.members.length} üye`;
+    sum.append(thumb, nm, badge, cnt);
+    det.appendChild(sum);
+
+    const body = document.createElement("div"); body.className="clanCardBody";
+    const desc = document.createElement("div"); desc.className="clanDesc";
+    desc.textContent = (c.description || "(açıklama yok)") + " · " + (c.join_mode==="invite" ? "Sadece davetle" : "Herkese açık");
+    body.appendChild(desc);
+
+    const row1 = document.createElement("div"); row1.className="clanRow";
+    const chatB = document.createElement("button"); chatB.type="button"; chatB.className="clanBtn"; chatB.textContent="Klan Sohbetini Aç";
+    chatB.addEventListener("click", ()=>{ clanPanel.classList.add("hidden"); openChatPanel(); setChannel("clan:"+c.key); });
+    row1.appendChild(chatB);
+    if(canManage){
+      const phB = document.createElement("button"); phB.type="button"; phB.className="clanBtn"; phB.textContent="Fotoğraf";
+      phB.addEventListener("click", ()=>{ photoTargetClan = c.key; document.getElementById("clanPhotoFileInput").click(); });
+      row1.appendChild(phB);
     }
-    membersList.appendChild(li);
+    body.appendChild(row1);
+
+    if(canManage){
+      const dRow = document.createElement("div"); dRow.className="clanRow";
+      const dIn = document.createElement("input"); dIn.type="text"; dIn.maxLength=200; dIn.placeholder="Açıklamayı güncelle"; dIn.value=c.description||"";
+      const dBtn = document.createElement("button"); dBtn.type="button"; dBtn.className="clanBtn"; dBtn.textContent="Kaydet";
+      dBtn.addEventListener("click", ()=>wsSend({type:"update_clan", clan:c.key, description:dIn.value.trim()}));
+      dRow.append(dIn, dBtn); body.appendChild(dRow);
+
+      const iRow = document.createElement("div"); iRow.className="clanRow";
+      const iIn = document.createElement("input"); iIn.type="text"; iIn.maxLength=20; iIn.placeholder="Davet edilecek kullanıcı adı";
+      const iBtn = document.createElement("button"); iBtn.type="button"; iBtn.className="clanBtn"; iBtn.textContent="Davet Et";
+      iBtn.addEventListener("click", ()=>{ const u=iIn.value.trim(); if(!u) return; wsSend({type:"invite_to_clan", clan:c.key, username:u}); iIn.value=""; });
+      iRow.append(iIn, iBtn); body.appendChild(iRow);
+    }
+    if(isOwner){
+      const mRow = document.createElement("div"); mRow.className="clanRow";
+      const sel = document.createElement("select");
+      [["open","Herkese açık"],["invite","Sadece davetle"]].forEach(([v,l])=>{ const o=document.createElement("option"); o.value=v; o.textContent=l; sel.appendChild(o); });
+      sel.value = c.join_mode || "open";
+      sel.addEventListener("change", ()=>wsSend({type:"update_clan", clan:c.key, join_mode:sel.value}));
+      mRow.appendChild(sel); body.appendChild(mRow);
+    }
+
+    const ul = document.createElement("ul"); ul.className="clanMembers";
+    c.members.forEach(m=>{
+      const li = document.createElement("li");
+      const nameSp = document.createElement("span"); nameSp.className="mName";
+      if(m.role==="owner") nameSp.appendChild(icEl("crown"));
+      else if(m.role==="mod") nameSp.appendChild(icEl("shield"));
+      nameSp.appendChild(document.createTextNode(m.username));
+      if(m.online) nameSp.appendChild(dotEl(true));
+      nameSp.addEventListener("click", ()=>openProfile(m.username));
+      li.appendChild(nameSp);
+      const acts = document.createElement("div"); acts.className="mActs";
+      if(m.username !== loggedInUsername){
+        if(isOwner){
+          if(m.role==="member") acts.appendChild(memberBtn("Mod Yap","",()=>wsSend({type:"set_clan_role", clan:c.key, username:m.username, role:"mod"})));
+          if(m.role==="mod") acts.appendChild(memberBtn("Modluğu Al","",()=>wsSend({type:"set_clan_role", clan:c.key, username:m.username, role:"member"})));
+          acts.appendChild(memberBtn("Devret","",()=>{ if(confirm(`${c.name} klanının sahipliği ${m.username} kullanıcısına devredilsin mi? Sen moderatör olacaksın.`)) wsSend({type:"transfer_clan", clan:c.key, username:m.username}); }));
+          acts.appendChild(memberBtn("Çıkar","danger",()=>{ if(confirm(`${m.username} klandan çıkarılsın mı?`)) wsSend({type:"kick_clan_member", clan:c.key, username:m.username}); }));
+        } else if(role==="mod" && m.role==="member"){
+          acts.appendChild(memberBtn("Çıkar","danger",()=>{ if(confirm(`${m.username} klandan çıkarılsın mı?`)) wsSend({type:"kick_clan_member", clan:c.key, username:m.username}); }));
+        }
+      }
+      li.appendChild(acts);
+      ul.appendChild(li);
+    });
+    body.appendChild(ul);
+
+    const leave = document.createElement("button"); leave.type="button"; leave.className="clanBtn danger"; leave.textContent="Klandan Ayrıl";
+    leave.addEventListener("click", ()=>{
+      const msg = isOwner
+        ? (c.members.length>1 ? "Sahip olarak ayrılırsan sahiplik başka bir üyeye geçer. Devam edilsin mi?" : "Klanda tek kişisin. Ayrılırsan klan ve sohbet geçmişi tamamen silinir. Devam edilsin mi?")
+        : "Klandan ayrılmak istiyor musun?";
+      if(confirm(msg)) wsSend({type:"leave_clan", name:c.name});
+    });
+    body.appendChild(leave);
+
+    det.appendChild(body);
+    wrap.appendChild(det);
   });
-
 }
 
-function addClanChatMessage(msg){
-  addChatMessage({...msg, channel:"clan"});
-  if(chatPanel.classList.contains("hidden")){ unreadChat++; updateChatBadge(); }
-}
-
-document.getElementById("myClanPhoto").addEventListener("click", ()=>{
-  if(!myClanData || loggedInUsername!==myClanData.owner) return;
-  document.getElementById("clanPhotoFileInput").click();
-});
 document.getElementById("clanPhotoFileInput").addEventListener("change", ()=>{
-  const file = document.getElementById("clanPhotoFileInput").files[0];
-  if(!file) return;
+  const inp = document.getElementById("clanPhotoFileInput");
+  const file = inp.files[0];
+  if(!file || !photoTargetClan){ inp.value=""; return; }
+  const target = photoTargetClan;
   fileToResizedDataUri(file, 128, dataUri=>{
-    socket.send(JSON.stringify({type:"update_clan", photo_data:dataUri}));
+    wsSend({type:"update_clan", clan:target, photo_data:dataUri});
+    inp.value = "";
   });
 });
-document.getElementById("clanDescSaveBtn").addEventListener("click", ()=>{
-  const description = document.getElementById("clanDescEditInput").value.trim();
-  socket.send(JSON.stringify({type:"update_clan", description}));
-});
-document.getElementById("leaveClanBtn").addEventListener("click", ()=>{
-  socket.send(JSON.stringify({type:"leave_clan"}));
-});
+
+function renderClanInvites(){
+  const ul = document.getElementById("clanInvitesList");
+  ul.innerHTML = "";
+  clanInvites.forEach(inv=>{
+    const li = document.createElement("li");
+    const sp = document.createElement("span"); sp.textContent = `${inv.clan} (davet eden: ${inv.from})`;
+    const acts = document.createElement("div"); acts.className="mActs";
+    acts.appendChild(memberBtn("Kabul","",()=>wsSend({type:"respond_clan_invite", clan:inv.clan, accept:true})));
+    acts.appendChild(memberBtn("Reddet","danger",()=>wsSend({type:"respond_clan_invite", clan:inv.clan, accept:false})));
+    li.append(sp, acts);
+    ul.appendChild(li);
+  });
+  updateClanSections();
+}
+
+/* Klan sohbeti mesaji (kalici; her klanin kendi kanali "clan:<ad>") */
+function addClanChatMessage(msg){
+  const key = "clan:"+msg.clan;
+  addChatMessage({...msg, channel:key});
+  if(!msg.system && (chatPanel.classList.contains("hidden") || currentChannel!==key)){ unreadChat++; updateChatBadge(); }
+}
+function handleClanHistory(data){
+  const key = "clan:"+data.clan;
+  const msgs = (data.messages||[]).map(m=>({...m, channel:key}));
+  const cur = channelData.get(key) || [];
+  if(data.prepend) channelData.set(key, msgs.concat(cur));
+  else {
+    const lastId = msgs.length ? msgs[msgs.length-1].id : 0;
+    channelData.set(key, msgs.concat(cur.filter(m=>m.id>lastId)));
+  }
+  clanHasMore.set(key, !!data.hasMore);
+  if(currentChannel===key) renderChannelMessages(!!data.prepend);
+}
 
 document.getElementById("closeAuthBtn").addEventListener("click", ()=>{
   authPanel.classList.add("hidden");
@@ -1765,12 +1930,15 @@ let boardMap=new Map(); // "x,y" -> renk. Yerlestirilen her piksel buraya da yaz
                          // hucre secince) o piksel "hafizada yok" sayilip siliniyordu.
 let boardLoaded=false;
 let socket;
+let serverOutdated = false;
 
 function connect(){
   socket=new WebSocket(BACKEND_WS_URL);
   socket.onmessage=e=>{
     const data=JSON.parse(e.data);
     if(data.type==="init"){
+      serverOutdated = !(data.version>=3);
+      if(serverOutdated) showToast("Sunucu eski sürümde: yeni klan sistemi için server.js'i Render'a yükleyip deploy et.");
       boardMap=new Map(data.board.map(p=>[p.x+","+p.y, p.color]));
       drawBoard();
       boardLoaded=true; loadingMsg.classList.add("hidden");
@@ -1815,14 +1983,27 @@ function connect(){
     if(data.type==="friends_list"){ renderFriendsList(data); }
     if(data.type==="dm"){ handleIncomingDm(data); }
     if(data.type==="dm_error"){ handleDmError(data); }
-    if(data.type==="my_clan"){ handleMyClan(data); }
-    if(data.type==="clan_error"){ showClanMsg(data.reason); }
+    if(data.type==="my_clans"){ handleMyClans(data); }
+    if(data.type==="clan_history"){ handleClanHistory(data); }
+    if(data.type==="clan_invites"){ clanInvites = data.invites||[]; renderClanInvites(); }
+    if(data.type==="clan_notice"){ showClanMsg(data.text, true); }
+    if(data.type==="clan_error"){ showClanMsg(data.reason); if(clanPanel.classList.contains("hidden")) showToast(data.reason); }
     if(data.type==="clans_list"){ renderClansList(data); }
     if(data.type==="clan_chat"){ addClanChatMessage(data); }
   };
   // Ucretsiz sunucular hareketsizlikte uyuyabilir; baglanti koparsa
   // birkac saniye sonra otomatik yeniden baglanmayi dene.
-  socket.onclose=()=>{ setTimeout(connect,3000); };
+  socket.onclose=()=>{
+    // Sunucu tarafinda oturum baglantiyla birlikte duser; arayuz hala "giris yapmis"
+    // gorunurse klan/sohbet islemleri sessizce calismaz. Bu yuzden durumu sifirla.
+    if(loggedInUsername){
+      loggedInUsername = null; setModState(false);
+      handleMyClans({clans:[]}); clanInvites=[]; renderClanInvites();
+      updateLoggedInUI();
+      showToast("Bağlantı koptu, tekrar giriş yapman gerekiyor.");
+    }
+    setTimeout(connect,3000);
+  };
   socket.onerror=()=>{ socket.close(); };
 }
 connect();
