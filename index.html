@@ -518,9 +518,38 @@
     #clanMenuBtn { width:100%; max-width:320px; padding:12px; font-size:16px; }
     #authPanelInner { max-width:100%; }
   }
+
+  /* --- SVG ikonlar (Lucide tarzi, emoji yerine) --- */
+  .ic{width:1.15em;height:1.15em;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;vertical-align:-0.2em;margin-right:.4em;flex-shrink:0;display:inline-block}
+  .ic.solo{margin-right:0}
+  .dot{display:inline-block;width:.6em;height:.6em;background:#2ecc40;border-radius:50% !important;margin-right:.4em;vertical-align:.05em}
+  .dot.after{margin:0 0 0 .4em}
 </style>
 </head>
 <body>
+<svg xmlns="http://www.w3.org/2000/svg" style="display:none" aria-hidden="true">
+<symbol id="i-home" viewBox="0 0 24 24"><path d="M3 10.5 12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/></symbol>
+<symbol id="i-user" viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21v-1a6 6 0 0 1 6-6h4a6 6 0 0 1 6 6v1"/></symbol>
+<symbol id="i-shield" viewBox="0 0 24 24"><path d="M12 3 4 6v6c0 5 3.5 8 8 9 4.5-1 8-4 8-9V6z"/></symbol>
+<symbol id="i-chat" viewBox="0 0 24 24"><path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12z"/></symbol>
+<symbol id="i-megaphone" viewBox="0 0 24 24"><path d="M3 11v2a1 1 0 0 0 1 1h3l8 4V6L7 10H4a1 1 0 0 0-1 1z"/><path d="M19 9a4 4 0 0 1 0 6"/></symbol>
+<symbol id="i-settings" viewBox="0 0 24 24"><path d="M4 6h10M18 6h2M4 12h2M10 12h10M4 18h12M20 18h0"/><circle cx="16" cy="6" r="2"/><circle cx="8" cy="12" r="2"/><circle cx="18" cy="18" r="2"/></symbol>
+<symbol id="i-trash" viewBox="0 0 24 24"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></symbol>
+<symbol id="i-theme" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 3a9 9 0 0 1 0 18z" fill="currentColor"/></symbol>
+<symbol id="i-chevron" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></symbol>
+<symbol id="i-mail" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14"/><path d="m3 7 9 6 9-6"/></symbol>
+<symbol id="i-alert" viewBox="0 0 24 24"><path d="M12 3 2 20h20z"/><path d="M12 10v4M12 17.5v.01"/></symbol>
+<symbol id="i-inbox" viewBox="0 0 24 24"><path d="M12 4v10m-4-4 4 4 4-4M4 16v4h16v-4"/></symbol>
+<symbol id="i-users" viewBox="0 0 24 24"><circle cx="9" cy="8" r="3.5"/><path d="M2 20a7 7 0 0 1 14 0"/><circle cx="17" cy="9" r="2.5"/><path d="M17 14a5 5 0 0 1 5 5"/></symbol>
+<symbol id="i-check" viewBox="0 0 24 24"><path d="m5 12 5 5 9-10"/></symbol>
+<symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+<symbol id="i-mute" viewBox="0 0 24 24"><path d="M4 9v6h4l5 4V5L8 9z"/><path d="m17 9 5 6M22 9l-5 6"/></symbol>
+<symbol id="i-volume" viewBox="0 0 24 24"><path d="M4 9v6h4l5 4V5L8 9z"/><path d="M17 8a5 5 0 0 1 0 8"/></symbol>
+<symbol id="i-crown" viewBox="0 0 24 24"><path d="M3 8l4 4 5-7 5 7 4-4-2 11H5z"/></symbol>
+<symbol id="i-help" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.7.4-1 .9-1 1.7M12 17v.01"/></symbol>
+<symbol id="i-pin" viewBox="0 0 24 24"><path d="M12 21s7-6.5 7-12a7 7 0 0 0-14 0c0 5.5 7 12 7 12z"/><circle cx="12" cy="9" r="2.5"/></symbol>
+</svg>
+
 
 <canvas id="board"></canvas>
 <div id="loadingMsg" class="hidden">
@@ -530,7 +559,7 @@
 </div>
 <div id="topBar" class="hud hidden">
   <div id="topLeftBar">
-    <button id="gameMenuBtn" type="button" title="Menü">⌄</button>
+    <button id="gameMenuBtn" type="button" title="Menü"><svg class="ic solo"><use href="#i-chevron"/></svg></button>
     <img id="gameLogo" src="placeturk-logo.jpg" alt="PixelTur V2">
     <span id="founderText">PixelTur V2</span>
   </div>
@@ -539,21 +568,21 @@
     <span class="fitBtnShort">Sığdır</span>
   </button>
   <div id="topRightGroup">
-    <button id="inGameChatBtn">💬<span class="chatBadge hidden"></span></button>
+    <button id="inGameChatBtn"><svg class="ic solo"><use href="#i-chat"/></svg><span class="chatBadge hidden"></span></button>
     <div id="cooldown" class="cdReady">Hazır!</div>
   </div>
 </div>
 <div id="gameMenu" class="hidden">
-  <button type="button" data-action="home">🏠 Ana Menü</button>
-  <button type="button" data-action="account">👤 Giriş yap / Hesabım</button>
-  <button type="button" data-action="clans">🛡️ Klanlar</button>
-  <button type="button" data-action="chat">💬 Sohbet</button>
-  <button type="button" data-action="announce">📢 Duyurular</button>
-  <button type="button" data-action="settings">⚙ Ayarlar</button>
-  <button type="button" data-action="help">? Yardım</button>
+  <button type="button" data-action="home"><svg class="ic"><use href="#i-home"/></svg>Ana Menü</button>
+  <button type="button" data-action="account"><svg class="ic"><use href="#i-user"/></svg>Giriş yap / Hesabım</button>
+  <button type="button" data-action="clans"><svg class="ic"><use href="#i-shield"/></svg>Klanlar</button>
+  <button type="button" data-action="chat"><svg class="ic"><use href="#i-chat"/></svg>Sohbet</button>
+  <button type="button" data-action="announce"><svg class="ic"><use href="#i-megaphone"/></svg>Duyurular</button>
+  <button type="button" data-action="settings"><svg class="ic"><use href="#i-settings"/></svg>Ayarlar</button>
+  <button type="button" data-action="help"><svg class="ic"><use href="#i-help"/></svg>Yardım</button>
 </div>
 <div id="bottomLeftInfo" class="hud hidden">
-  <div id="onlineBadge">🟢 -</div>
+  <div id="onlineBadge"><span class="dot"></span>-</div>
   <div id="coordBox">(-, -)</div>
 </div>
 <div id="palette" class="hud hidden"></div>
@@ -568,13 +597,13 @@
   <img id="menuLogo" src="placeturk-logo.jpg" alt="PixelTur V2 logo" onerror="this.style.display='none'">
   <h1 id="menuTitle">PixelTur V2</h1>
   <p id="menuSubtitle">Türkiye'nin r/place tarzı ortak piksel tahtası</p>
-  <p id="menuOnline">🟢 - kişi çevrimiçi</p>
+  <p id="menuOnline"><span class="dot"></span>- kişi çevrimiçi</p>
   <p id="loggedInBar" class="hidden"></p>
-  <button id="authBtn">👤 Giriş Yap / Kayıt Ol</button>
-  <button id="announceBtn">📢 Duyurular</button>
-  <button id="chatBtn">💬 Sohbet<span class="chatBadge hidden"></span></button>
-  <button id="menuThemeBtn" type="button">◐ Tema</button>
-  <button id="clanMenuBtn">🛡️ Klanlar</button>
+  <button id="authBtn"><svg class="ic"><use href="#i-user"/></svg>Giriş Yap / Kayıt Ol</button>
+  <button id="announceBtn"><svg class="ic"><use href="#i-megaphone"/></svg>Duyurular</button>
+  <button id="chatBtn"><svg class="ic"><use href="#i-chat"/></svg>Sohbet<span class="chatBadge hidden"></span></button>
+  <button id="menuThemeBtn" type="button"><svg class="ic"><use href="#i-theme"/></svg>Tema</button>
+  <button id="clanMenuBtn"><svg class="ic"><use href="#i-shield"/></svg>Klanlar</button>
   <button id="playBtn">Oyuna Başla</button>
 </div>
 
@@ -594,7 +623,7 @@
     </div>
 
     <div id="accountView" class="hidden">
-      <h2>👤 Hesabım</h2>
+      <h2><svg class="ic"><use href="#i-user"/></svg>Hesabım</h2>
       <div id="avatarUploadRow">
         <div id="myAvatarPreview">+</div>
         <input id="avatarFileInput" type="file" accept="image/*" class="hidden">
@@ -603,10 +632,10 @@
       <textarea id="bioInput" maxlength="150" placeholder="Hakkında birkaç kelime..."></textarea>
       <button id="saveProfileBtn" type="button">Kaydet</button>
 
-      <h3 class="accountSectionTitle">📥 Gelen İstekler</h3>
+      <h3 class="accountSectionTitle"><svg class="ic"><use href="#i-inbox"/></svg>Gelen İstekler</h3>
       <ul id="pendingFriendList"><li class="chatEmpty">Yok</li></ul>
 
-      <h3 class="accountSectionTitle">👥 Arkadaşlarım</h3>
+      <h3 class="accountSectionTitle"><svg class="ic"><use href="#i-users"/></svg>Arkadaşlarım</h3>
       <ul id="friendsList"><li class="chatEmpty">Henüz arkadaşın yok</li></ul>
 
       <button id="accountLogoutBtn" type="button">Çıkış Yap</button>
@@ -654,7 +683,7 @@
 
 <div id="dmPanel" class="hidden">
   <div id="dmPanelInner">
-    <h2>✉️ <span id="dmWithName"></span></h2>
+    <h2><svg class="ic"><use href="#i-mail"/></svg><span id="dmWithName"></span></h2>
     <ul id="dmMessages"></ul>
     <div id="dmInputRow">
       <input id="dmTextInput" type="text" maxlength="300" placeholder="Özel mesaj yaz...">
@@ -666,7 +695,7 @@
 
 <div id="clanPanel" class="hidden">
   <div id="clanPanelInner">
-    <h2>🛡️ Klanlar</h2>
+    <h2><svg class="ic"><use href="#i-shield"/></svg>Klanlar</h2>
 
     <div id="noClanView">
       <form id="createClanForm">
@@ -703,7 +732,7 @@
 
 <div id="announcePanel" class="hidden">
   <div id="announcePanelInner">
-    <h2>📢 Duyurular</h2>
+    <h2><svg class="ic"><use href="#i-megaphone"/></svg>Duyurular</h2>
     <ul id="announceList"></ul>
     <button id="closeAnnounceBtn">Kapat</button>
   </div>
@@ -713,11 +742,11 @@
   <div id="chatPanelInner">
     <div id="chatHeader">
       <div id="chatTitle">Sohbet - Kanal: <span id="chatChannelLabel">tr</span> <span id="chatOnline"></span></div>
-      <button id="chatClearBtn" type="button" class="hidden" title="Kanalı temizle (moderatör)">🗑</button>
-      <button id="chatThemeBtn" type="button" title="Açık/Koyu tema">◐</button>
+      <button id="chatClearBtn" type="button" class="hidden" title="Kanalı temizle (moderatör)"><svg class="ic solo"><use href="#i-trash"/></svg></button>
+      <button id="chatThemeBtn" type="button" title="Açık/Koyu tema"><svg class="ic solo"><use href="#i-theme"/></svg></button>
       <button id="closeChatBtn" type="button">X</button>
     </div>
-    <div id="chatWarn">⚠ Kişisel bilgi paylaşma, hakaret etme. Yazılanlardan yapımcı sorumlu değildir.</div>
+    <div id="chatWarn"><svg class="ic"><use href="#i-alert"/></svg>Kişisel bilgi paylaşma, hakaret etme. Yazılanlardan yapımcı sorumlu değildir.</div>
     <ul id="chatMessages"><li class="chatEmpty">Henüz mesaj yok, ilk yazan sen ol!</li></ul>
     <div id="chatInputRow">
       <input id="chatTextInput" type="text" maxlength="200" placeholder="Bir şeyler yaz...">
@@ -742,7 +771,7 @@
 
 <div id="chatRules" class="hidden">
   <div id="chatRulesInner">
-    <h2>⚠️ Sohbet Kuralları</h2>
+    <h2><svg class="ic"><use href="#i-alert"/></svg>Sohbet Kuralları</h2>
     <ul>
       <li>Kendine veya başkalarına ait telefon numarası, adres, şifre gibi <strong>özel/kişisel bilgi paylaşma.</strong></li>
       <li>Hakaret, küfür, taciz, nefret söylemi ve yasa dışı içerik <strong>yasaktır.</strong></li>
@@ -761,6 +790,17 @@
 </div>
 
 <script>
+/* --- Ikon yardimcilari (kullanici adlari textNode ile eklenir, XSS yok) --- */
+const SVGNS="http://www.w3.org/2000/svg";
+function icEl(name, solo){
+  const s=document.createElementNS(SVGNS,"svg"); s.setAttribute("class","ic"+(solo?" solo":""));
+  const u=document.createElementNS(SVGNS,"use"); u.setAttribute("href","#i-"+name); s.appendChild(u); return s;
+}
+function setIconText(el, name, text){ el.textContent=""; el.appendChild(icEl(name)); el.appendChild(document.createTextNode(text)); }
+function dotEl(after){ const d=document.createElement("span"); d.className="dot"+(after?" after":""); return d; }
+function setDotText(el, text){ el.textContent=""; el.appendChild(dotEl()); el.appendChild(document.createTextNode(text)); }
+function setNameOnline(el, name, online){ el.textContent=name; if(online) el.appendChild(dotEl(true)); }
+
 const canvas=document.getElementById("board");
 const ctx=canvas.getContext("2d");
 
@@ -1052,7 +1092,7 @@ function appendMessageToDOM(msg){
   meta.appendChild(nameSpan); meta.appendChild(timeSpan);
   if(loggedInIsMod && !msg.system && msg.id!==undefined && !msg.removed){
     const del=document.createElement("button");
-    del.type="button"; del.className="modDelBtn"; del.textContent="🗑"; del.title="Mesajı sil";
+    del.type="button"; del.className="modDelBtn"; del.appendChild(icEl("trash",true)); del.title="Mesajı sil";
     del.addEventListener("click", ()=>socket.send(JSON.stringify({type:"mod_delete", id:msg.id, channel:msg.channel||currentChannel})));
     meta.appendChild(del);
   }
@@ -1110,7 +1150,7 @@ function showChatBlockedNotice(reason){
   const li = document.createElement("li");
   li.style.color = "#ff8080";
   li.style.fontStyle = "italic";
-  li.textContent = "⚠️ " + (reason || "Mesajın gönderilemedi.");
+  li.appendChild(icEl("alert")); li.appendChild(document.createTextNode(reason || "Mesajın gönderilemedi."));
   chatMessages.appendChild(li);
   chatMessages.scrollTop = chatMessages.scrollHeight;
   setTimeout(()=>{ li.remove(); }, 4000);
@@ -1140,8 +1180,8 @@ const onlineBadge=document.getElementById("onlineBadge");
 const menuOnline=document.getElementById("menuOnline");
 const chatOnline=document.getElementById("chatOnline");
 function updateOnlineCount(count){
-  onlineBadge.textContent = `🟢 ${count}`;
-  menuOnline.textContent = `🟢 ${count} kişi çevrimiçi`;
+  setDotText(onlineBadge, String(count));
+  setDotText(menuOnline, `${count} kişi çevrimiçi`);
   chatOnline.textContent = `(${count} çevrimiçi)`;
 }
 
@@ -1195,12 +1235,12 @@ function updateLoggedInUI(){
     logoutBtn.type="button"; logoutBtn.textContent="(Çıkış Yap)";
     logoutBtn.addEventListener("click", logout);
     loggedInBar.appendChild(logoutBtn);
-    authBtn.textContent = "👤 Hesabım";
+    setIconText(authBtn,"user","Hesabım");
     authFormSection.classList.add("hidden");
     accountView.classList.remove("hidden");
   } else {
     loggedInBar.classList.add("hidden");
-    authBtn.textContent = "👤 Giriş Yap / Kayıt Ol";
+    setIconText(authBtn,"user","Giriş Yap / Kayıt Ol");
     authFormSection.classList.remove("hidden");
     accountView.classList.add("hidden");
   }
@@ -1308,7 +1348,8 @@ function openProfile(username){
 function makeActionBtn(label, onClick){
   const b=document.createElement("button");
   b.className = "profileActionBtn"; b.type="button";
-  b.textContent = label; b.addEventListener("click", onClick);
+  if(Array.isArray(label)){ b.appendChild(icEl(label[0])); b.appendChild(document.createTextNode(label[1])); } else b.textContent = label;
+  b.addEventListener("click", onClick);
   return b;
 }
 
@@ -1326,7 +1367,7 @@ function renderProfile(data){
     profileBio.textContent = "Bu kullanıcı bulunamadı.";
     return;
   }
-  profileUsername.textContent = data.username + (data.online ? " 🟢" : "");
+  setNameOnline(profileUsername, data.username, data.online);
   profileBio.textContent = data.bio || "(Henüz bir şey yazmamış)";
   if(data.avatar_data){
     profileAvatarBig.style.backgroundImage = `url(${data.avatar_data})`;
@@ -1336,18 +1377,18 @@ function renderProfile(data){
     profileAvatarBig.textContent = data.username.charAt(0).toUpperCase();
   }
   if(data.clan){
-    profileClanTag.textContent = `🛡️ ${data.clan}`;
+    setIconText(profileClanTag,"shield",data.clan);
     profileClanTag.classList.remove("hidden");
   } else profileClanTag.classList.add("hidden");
 
   profileActions.innerHTML = "";
   if(data.friendStatus === "friends"){
-    profileActions.appendChild(makeActionBtn("✉️ DM Gönder", ()=>{ profileModal.classList.add("hidden"); openDm(data.username); }));
+    profileActions.appendChild(makeActionBtn(["mail","DM Gönder"], ()=>{ profileModal.classList.add("hidden"); openDm(data.username); }));
   } else if(data.friendStatus === "pending_sent"){
     const span=document.createElement("span"); span.style.cssText="color:#aaa;font-size:13px;";
     span.textContent="İstek gönderildi, bekleniyor..."; profileActions.appendChild(span);
   } else if(data.friendStatus === "pending_received"){
-    profileActions.appendChild(makeActionBtn("✅ İsteği Kabul Et", ()=>{
+    profileActions.appendChild(makeActionBtn(["check","İsteği Kabul Et"], ()=>{
       socket.send(JSON.stringify({type:"respond_friend_request", username:data.username, accept:true}));
       profileModal.classList.add("hidden");
     }));
@@ -1356,15 +1397,15 @@ function renderProfile(data){
       const span=document.createElement("span"); span.style.cssText="color:#aaa;font-size:13px;";
       span.textContent="Arkadaş eklemek için giriş yapmalısın."; profileActions.appendChild(span);
     } else {
-      profileActions.appendChild(makeActionBtn("➕ Arkadaş Ekle", ()=>{
+      profileActions.appendChild(makeActionBtn(["plus","Arkadaş Ekle"], ()=>{
         socket.send(JSON.stringify({type:"send_friend_request", username:data.username}));
       }));
     }
   }
   if(loggedInIsMod && data.friendStatus!=="self"){
-    profileActions.appendChild(makeActionBtn("🔇 10 dk", ()=>socket.send(JSON.stringify({type:"mod_mute", username:data.username, minutes:10}))));
-    profileActions.appendChild(makeActionBtn("🔇 1 saat", ()=>socket.send(JSON.stringify({type:"mod_mute", username:data.username, minutes:60}))));
-    profileActions.appendChild(makeActionBtn("🔊 Aç", ()=>socket.send(JSON.stringify({type:"mod_unmute", username:data.username}))));
+    profileActions.appendChild(makeActionBtn(["mute","10 dk"], ()=>socket.send(JSON.stringify({type:"mod_mute", username:data.username, minutes:10}))));
+    profileActions.appendChild(makeActionBtn(["mute","1 saat"], ()=>socket.send(JSON.stringify({type:"mod_mute", username:data.username, minutes:60}))));
+    profileActions.appendChild(makeActionBtn(["volume","Aç"], ()=>socket.send(JSON.stringify({type:"mod_unmute", username:data.username}))));
   }
 }
 
@@ -1403,7 +1444,7 @@ function renderFriendsList(data){
   } else {
     data.friends.forEach(f=>{
       const li=document.createElement("li");
-      const span=document.createElement("span"); span.textContent = f.username + (f.online?" 🟢":"");
+      const span=document.createElement("span"); setNameOnline(span, f.username, f.online);
       const dmBtn=document.createElement("button"); dmBtn.textContent="DM";
       dmBtn.addEventListener("click", ()=>{ authPanel.classList.add("hidden"); openDm(f.username); });
       li.appendChild(span); li.appendChild(dmBtn);
@@ -1548,7 +1589,7 @@ function handleMyClan(data){
   data.clan.members.forEach(m=>{
     const li=document.createElement("li");
     const span=document.createElement("span");
-    span.textContent = `${m.role==="owner"?"👑 ":""}${m.username}${m.online?" 🟢":""}`;
+    span.textContent=""; if(m.role==="owner") span.appendChild(icEl("crown")); span.appendChild(document.createTextNode(m.username)); if(m.online) span.appendChild(dotEl(true));
     li.appendChild(span);
     if(isOwner && m.username !== loggedInUsername){
       const kickBtn=document.createElement("button"); kickBtn.textContent="Çıkar";

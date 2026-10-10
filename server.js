@@ -43,7 +43,84 @@ const server = http.createServer((req, res) => {
   res.end("PixelTur V2 backend calisiyor");
 });
 
-const wss = new WebSocket.Server({ server });
+// maxPayload: avatar (base64) + biyografi sigacak, ama devasa mesajlar reddedilir.
+const wss = new WebSocket.Server({ server, maxPayload: 256 * 1024 });
+
+/* ================= BOT / DoS KORUMASI ================= */
+const MAX_CONN_PER_IP = 6;          // ayni IP'den en fazla eszamanli baglanti
+const MAX_NEW_CONN_PER_MIN = 20;    // ayni IP'den dakikada yeni baglanti
+const MSG_BURST = 30;               // baglanti basina anlik mesaj hakki
+const MSG_REFILL_PER_SEC = 10;      // saniyede dolan mesaj hakki
+const IP_MSG_PER_SEC = 40;          // IP basina toplam mesaj/sn (tum baglantilar)
+const STRIKE_LIMIT = 5;             // bu kadar ihlalde gecici ban
+const BAN_MS = 10 * 60 * 1000;      // 10 dk
+
+const bannedUntil = new Map();      // ip -> ts
+const connCountByIp = new Map();    // ip -> sayi
+const newConnLog = new Map();       // ip -> [ts,...]
+const ipMsgBucket = new Map();      // ip -> {sec, n}
+const strikesByIp = new Map();      // ip -> {n, ts}
+
+function isBanned(ip) {
+  const t = bannedUntil.get(ip);
+  if (!t) return false;
+  if (Date.now() > t) { bannedUntil.delete(ip); return false; }
+  return true;
+}
+function banIp(ip, reason) {
+  bannedUntil.set(ip, Date.now() + BAN_MS);
+  console.warn(`[guard] ${ip} ${BAN_MS / 60000} dk banlandi: ${reason}`);
+  for (const c of wss.clients) {
+    if (c.clientIp === ip) { try { c.close(1008, "Cok fazla istek"); } catch {} setTimeout(() => { try { c.terminate(); } catch {} }, 1000); }
+  }
+}
+function addStrike(ws, reason, weight = 1) {
+  const ip = ws.clientIp;
+  const now = Date.now();
+  const st = strikesByIp.get(ip) || { n: 0, ts: now };
+  if (now - st.ts > 60 * 1000) { st.n = 0; st.ts = now; } // 1 dk icinde say
+  st.n += weight;
+  strikesByIp.set(ip, st);
+  if (st.n >= STRIKE_LIMIT) { strikesByIp.delete(ip); banIp(ip, reason); return true; }
+  return false;
+}
+// Baglanti basina token bucket
+function allowMessage(ws) {
+  const now = Date.now();
+  if (!ws.bucket) ws.bucket = { tokens: MSG_BURST, ts: now };
+  const b = ws.bucket;
+  b.tokens = Math.min(MSG_BURST, b.tokens + ((now - b.ts) / 1000) * MSG_REFILL_PER_SEC);
+  b.ts = now;
+  if (b.tokens < 1) return false;
+  b.tokens -= 1;
+  // IP basina toplam
+  const sec = Math.floor(now / 1000);
+  const ib = ipMsgBucket.get(ws.clientIp);
+  if (!ib || ib.sec !== sec) ipMsgBucket.set(ws.clientIp, { sec, n: 1 });
+  else if (++ib.n > IP_MSG_PER_SEC) return false;
+  return true;
+}
+// Bellek temizligi
+setInterval(() => {
+  const now = Date.now();
+  for (const [ip, t] of bannedUntil) if (now > t) bannedUntil.delete(ip);
+  for (const [ip, arr] of newConnLog) {
+    const f = arr.filter((t) => now - t < 60000);
+    if (f.length) newConnLog.set(ip, f); else newConnLog.delete(ip);
+  }
+  for (const [ip, st] of strikesByIp) if (now - st.ts > 60000) strikesByIp.delete(ip);
+  for (const [ip, b] of ipMsgBucket) if (Math.floor(now / 1000) - b.sec > 5) ipMsgBucket.delete(ip);
+  for (const [ip, t] of lastPlacedAt) if (now - t > 5 * 60 * 1000) lastPlacedAt.delete(ip);
+}, 60 * 1000).unref();
+
+// Olu baglantilari at (ping/pong)
+setInterval(() => {
+  for (const c of wss.clients) {
+    if (c.isAlive === false) { c.terminate(); continue; }
+    c.isAlive = false;
+    try { c.ping(); } catch {}
+  }
+}, 30 * 1000).unref();
 
 // IP başına son piksel basma zamanı (server tarafı cooldown - client tarafı
 // atlatılamaz hale getirmek için). Basit bir bellek içi harita; sunucu
@@ -269,16 +346,45 @@ async function loadBoard() {
   return res.rows;
 }
 
+function cleanIp(v) {
+  if (typeof v !== "string") return null;
+  v = v.trim().replace(/^::ffff:/, "");
+  return /^[0-9a-fA-F:.]{3,45}$/.test(v) ? v : null;
+}
 function getClientIp(req) {
-  // Render/Railway gibi platformlarda proxy arkasında olduğumuz için
-  // öncelikle x-forwarded-for başlığına bakıyoruz.
-  const forwarded = req.headers["x-forwarded-for"];
-  if (forwarded) return forwarded.split(",")[0].trim();
-  return req.socket.remoteAddress;
+  // Render, Cloudflare arkasinda calisir. Cloudflare bu basliklari kendisi
+  // yazar (istemci sahteleyemez). X-Forwarded-For'un ILK elemani ise
+  // istemci tarafindan sahtelenebilir, bu yuzden sadece son care.
+  const h = req.headers;
+  return (
+    cleanIp(h["cf-connecting-ip"]) ||
+    cleanIp(h["true-client-ip"]) ||
+    cleanIp((h["x-forwarded-for"] || "").split(",").pop()) ||
+    cleanIp(req.socket.remoteAddress) ||
+    "unknown"
+  );
 }
 
 wss.on("connection", async (ws, req) => {
   ws.clientIp = getClientIp(req);
+  ws.isAlive = true;
+  ws.on("pong", () => { ws.isAlive = true; });
+  ws.on("error", () => {});
+
+  // --- Bot korumasi: ban / baglanti sayisi / baglanti hizi ---
+  if (isBanned(ws.clientIp)) { ws.close(1008, "Gecici olarak engellendin"); return; }
+  const cur = connCountByIp.get(ws.clientIp) || 0;
+  if (cur >= MAX_CONN_PER_IP) { ws.close(1008, "Cok fazla baglanti"); return; }
+  const nowC = Date.now();
+  const log = (newConnLog.get(ws.clientIp) || []).filter((t) => nowC - t < 60000);
+  log.push(nowC);
+  newConnLog.set(ws.clientIp, log);
+  if (log.length > MAX_NEW_CONN_PER_MIN) { banIp(ws.clientIp, "baglanti seli"); ws.close(1008, "Cok fazla baglanti"); return; }
+  connCountByIp.set(ws.clientIp, cur + 1);
+  ws.on("close", () => {
+    const n = (connCountByIp.get(ws.clientIp) || 1) - 1;
+    if (n <= 0) connCountByIp.delete(ws.clientIp); else connCountByIp.set(ws.clientIp, n);
+  });
   broadcast({ type: "online", count: wss.clients.size });
 
   ws.on("close", () => {
@@ -302,12 +408,19 @@ wss.on("connection", async (ws, req) => {
     console.error("Tahta yuklenirken hata:", err);
   }
 
-  ws.on("message", async (msg) => {
+  ws.on("message", async (msg, isBinary) => {
+    if (isBinary) { addStrike(ws, "binary mesaj", 2); return; }
+    if (!allowMessage(ws)) { addStrike(ws, "mesaj seli"); return; }
     let data;
     try {
       data = JSON.parse(msg);
     } catch {
-      return; // gecersiz JSON, sessizce yoksay
+      addStrike(ws, "gecersiz JSON");
+      return;
+    }
+    if (!data || typeof data !== "object" || typeof data.type !== "string") {
+      addStrike(ws, "gecersiz mesaj");
+      return;
     }
 
     if (data.type === "register" || data.type === "login") {
@@ -976,9 +1089,12 @@ wss.on("connection", async (ws, req) => {
     // --- Sunucu tarafi cooldown ---
     const now = Date.now();
     const last = lastPlacedAt.get(ws.clientIp) || 0;
-    if (now - last < COOLDOWN_MS) {
-      return; // cooldown dolmamis, istegi yoksay
+    if (now - last < COOLDOWN_MS || now - (ws.lastPlace || 0) < COOLDOWN_MS) {
+      // Gercek istemci cooldown bitmeden gondermez; tekrarlayan ihlal = bot
+      if (now - last < COOLDOWN_MS - 1500) addStrike(ws, "cooldown ihlali");
+      return;
     }
+    ws.lastPlace = now;
     lastPlacedAt.set(ws.clientIp, now);
 
     try {
