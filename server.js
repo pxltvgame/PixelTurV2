@@ -26,6 +26,14 @@ const MODERATORS = new Set(
   (process.env.MODERATORS || "PixelTurV2,Deneme")
     .split(",").map((x) => x.trim().toLocaleLowerCase("tr")).filter(Boolean)
 );
+// --- Girdi temizleme / dogrulama ---
+const IMG_URI_REGEX = /^data:image\/(png|jpeg|gif|webp);base64,[A-Za-z0-9+\/]+={0,2}$/;
+function isImageUri(v) { return typeof v === "string" && IMG_URI_REGEX.test(v); }
+// kontrol karakterleri, sifir genislikli ve yon degistiren (RTL override) karakterler
+const BAD_CHARS = /[\u0000-\u0009\u000b-\u001f\u007f\u200b-\u200f\u2028-\u202e\u2060-\u2069\ufeff]/g;
+const failedLogins = new Map(); // usernameLower -> {n, ts, until}
+const LOGIN_FAIL_LIMIT = 8, LOGIN_LOCK_MS = 5 * 60 * 1000;
+const MAX_TOTAL_CONN = 1500;
 const mutedUntil = new Map(); // usernameLower -> bitis zamani (ms)
 
 const pool = new Pool({
@@ -36,7 +44,7 @@ const pool = new Pool({
 // Basit bir HTTP sunucu: hem WebSocket'i taşımak hem de
 // dış bir servisin (cron-job.org, UptimeRobot vb.) sunucuyu
 // uyanık tutmak için "ping" atabileceği bir healthcheck sağlamak için.
-const server = http.createServer((req, res) => {
+const server = http.createServer({ connectionsCheckingInterval: 2000, headersTimeout: 10000, requestTimeout: 15000, keepAliveTimeout: 5000, maxHeaderSize: 8192 }, (req, res) => {
   if (req.url === "/health") {
     res.writeHead(200, { "Content-Type": "text/plain" });
     res.end("ok");
@@ -47,7 +55,13 @@ const server = http.createServer((req, res) => {
 });
 
 // maxPayload: avatar (base64) + biyografi sigacak, ama devasa mesajlar reddedilir.
-const wss = new WebSocket.Server({ server, maxPayload: 256 * 1024 });
+server.headersTimeout = 10000;   // slowloris: basliklar 10 sn'de gelmeli
+server.requestTimeout = 15000;
+server.keepAliveTimeout = 5000;
+server.maxHeadersCount = 50;
+server.maxHeaderSize = 8192;
+server.on("clientError", (err, sock) => { try { sock.destroy(); } catch {} });
+const wss = new WebSocket.Server({ server, maxPayload: 256 * 1024, perMessageDeflate: false, clientTracking: true });
 
 /* ================= BOT / DoS KORUMASI ================= */
 const MAX_CONN_PER_IP = 6;          // ayni IP'den en fazla eszamanli baglanti
@@ -80,6 +94,8 @@ function banIp(ip, reason) {
 function addStrike(ws, reason, weight = 1) {
   const ip = ws.clientIp;
   const now = Date.now();
+  ws.strikes = (ws.strikes || 0) + weight;       // IP sahtelense bile baglanti kapanir
+  if (ws.strikes >= STRIKE_LIMIT * 2) { try { ws.close(1008, "Cok fazla ihlal"); } catch {} setTimeout(() => { try { ws.terminate(); } catch {} }, 500); }
   const st = strikesByIp.get(ip) || { n: 0, ts: now };
   if (now - st.ts > 60 * 1000) { st.n = 0; st.ts = now; } // 1 dk icinde say
   st.n += weight;
@@ -103,6 +119,28 @@ function allowMessage(ws) {
   else if (++ib.n > IP_MSG_PER_SEC) return false;
   return true;
 }
+// DB'ye dokunan agir islemler icin ayri (daha siki) limitler: baglanti basina + tum sunucu
+const HEAVY_TYPES = new Set(["get_profile","get_avatar","list_clans","clan_history","list_friends","refresh_clans","list_clan_invites","send_friend_request","respond_friend_request","create_clan","join_clan","update_profile","invite_to_clan"]);
+const HEAVY_GLOBAL_PER_SEC = Number(process.env.HEAVY_GLOBAL_PER_SEC) || 150;
+const GLOBAL_MSG_PER_SEC = Number(process.env.GLOBAL_MSG_PER_SEC) || 1500;
+let heavySec = 0, heavyN = 0, globSec = 0, globN = 0;
+function allowGlobal(heavy) {
+  const sec = Math.floor(Date.now() / 1000);
+  if (sec !== heavySec) { heavySec = sec; heavyN = 0; }
+  if (sec !== globSec) { globSec = sec; globN = 0; }
+  if (++globN > GLOBAL_MSG_PER_SEC) return false;
+  if (heavy && ++heavyN > HEAVY_GLOBAL_PER_SEC) return false;
+  return true;
+}
+function allowHeavy(ws) {
+  const now = Date.now();
+  if (!ws.hb) ws.hb = { t: 20, ts: now };
+  ws.hb.t = Math.min(20, ws.hb.t + ((now - ws.hb.ts) / 1000) * 4);
+  ws.hb.ts = now;
+  if (ws.hb.t < 1) return false;
+  ws.hb.t -= 1;
+  return true;
+}
 // Bellek temizligi
 setInterval(() => {
   const now = Date.now();
@@ -112,6 +150,7 @@ setInterval(() => {
     if (f.length) newConnLog.set(ip, f); else newConnLog.delete(ip);
   }
   for (const [ip, st] of strikesByIp) if (now - st.ts > 60000) strikesByIp.delete(ip);
+  for (const [u, f] of failedLogins) if (now - f.ts > 15 * 60 * 1000 && !(f.until > now)) failedLogins.delete(u);
   for (const [ip, b] of ipMsgBucket) if (Math.floor(now / 1000) - b.sec > 5) ipMsgBucket.delete(ip);
   for (const [ip, t] of lastPlacedAt) if (now - t > 5 * 60 * 1000) lastPlacedAt.delete(ip);
 }, 60 * 1000).unref();
@@ -210,16 +249,18 @@ const lastClanChatAt = new Map();
 const lastInviteAt = new Map();
 const repClanByUser = new Map(); // usernameLower -> temsil edilen klan (piksel sayaci icin)
 
-// Temsil edilen klana atilan pikseli say (sadece giris yapmis ve klan temsil eden kullanicilar)
+// Temsil edilen klana atilan pikseli say: bellekte topla, 10 sn'de bir toplu yaz (DB yukunu azaltir)
+const pendingClanPixels = new Map();
 function creditClanPixel(lower) {
   const nl = repClanByUser.get(lower);
   if (!nl || !myClanSet(lower).has(nl)) return;
-  pool.query("UPDATE clans SET pixels_total = pixels_total + 1 WHERE name_lower=$1", [nl]).catch(() => {});
-  pool.query(
-    "INSERT INTO clan_daily (clan_name_lower, day, pixels) VALUES ($1, CURRENT_DATE, 1) ON CONFLICT (clan_name_lower, day) DO UPDATE SET pixels = clan_daily.pixels + 1",
-    [nl]
-  ).catch(() => {});
+  pendingClanPixels.set(nl, (pendingClanPixels.get(nl) || 0) + 1);
 }
+setInterval(() => {
+  if (!pendingClanPixels.size) return;
+  const batch = [...pendingClanPixels]; pendingClanPixels.clear();
+  for (const [nl, n] of batch) pool.query("UPDATE clans SET pixels_total = pixels_total + $2 WHERE name_lower=$1", [nl, n]).catch(() => {});
+}, 10000).unref();
 async function loadRepClan(ws) {
   const lower = ws.username.toLocaleLowerCase("tr");
   const r = await pool.query("SELECT rep_clan FROM users WHERE username_lower=$1", [lower]);
@@ -271,17 +312,11 @@ async function getClanFullInfo(nameLower, viewerLower) {
     );
     invites = inv.rows.map((r) => ({ username: r.username, from: r.from_username }));
   }
-  const today = await pool.query("SELECT pixels FROM clan_daily WHERE clan_name_lower=$1 AND day=CURRENT_DATE", [nameLower]);
-  const pixelsToday = today.rows.length ? Number(today.rows[0].pixels) : 0;
-  const pixelsTotal = Number(clan.pixels_total || 0);
-  let rankTotal = null, rankDaily = null;
+  const pixelsTotal = Number(clan.pixels_total || 0) + (pendingClanPixels.get(nameLower) || 0);
+  let rankTotal = null;
   if (pixelsTotal > 0) {
     const rt = await pool.query("SELECT COUNT(*) AS n FROM clans WHERE pixels_total > $1", [pixelsTotal]);
     rankTotal = Number(rt.rows[0].n) + 1;
-  }
-  if (pixelsToday > 0) {
-    const rd = await pool.query("SELECT COUNT(*) AS n FROM clan_daily WHERE day=CURRENT_DATE AND pixels > $1", [pixelsToday]);
-    rankDaily = Number(rd.rows[0].n) + 1;
   }
   return {
     key: nameLower,
@@ -299,7 +334,7 @@ async function getClanFullInfo(nameLower, viewerLower) {
     })),
     bans: bansRes.rows.map((r) => r.username),
     invites,
-    stats: { pixelsToday, pixelsTotal, rankDaily, rankTotal }
+    stats: { pixelsTotal, rankTotal }
   };
 }
 
@@ -585,11 +620,20 @@ async function ensureSchema() {
   `);
 }
 
+// Tahta bellekte tutulur: her baglantida tum tabloyu taramak DoS'a acik olurdu.
+let boardMap = null, boardLoading = null;
 async function loadBoard() {
-  const res = await pool.query("SELECT x,y,color FROM pixels");
-  return res.rows;
+  if (!boardMap) {
+    if (!boardLoading) boardLoading = pool.query("SELECT x,y,color FROM pixels").then((res) => {
+      boardMap = new Map(res.rows.map((r) => [r.x * 100000 + r.y, r]));
+    }).finally(() => { boardLoading = null; });
+    await boardLoading;
+  }
+  return [...boardMap.values()];
 }
 
+// Cloudflare/Render arkasinda degilse (dogrudan internete aciksa) TRUST_PROXY_HEADERS=0 yapin
+const TRUST_PROXY_HEADERS = process.env.TRUST_PROXY_HEADERS !== "0";
 function cleanIp(v) {
   if (typeof v !== "string") return null;
   v = v.trim().replace(/^::ffff:/, "");
@@ -601,8 +645,8 @@ function getClientIp(req) {
   // istemci tarafindan sahtelenebilir, bu yuzden sadece son care.
   const h = req.headers;
   return (
-    cleanIp(h["cf-connecting-ip"]) ||
-    cleanIp(h["true-client-ip"]) ||
+    (TRUST_PROXY_HEADERS && cleanIp(h["cf-connecting-ip"])) ||
+    (TRUST_PROXY_HEADERS && cleanIp(h["true-client-ip"])) ||
     cleanIp((h["x-forwarded-for"] || "").split(",").pop()) ||
     cleanIp(req.socket.remoteAddress) ||
     "unknown"
@@ -616,6 +660,7 @@ wss.on("connection", async (ws, req) => {
   ws.on("error", () => {});
 
   // --- Bot korumasi: ban / baglanti sayisi / baglanti hizi ---
+  if (wss.clients.size > MAX_TOTAL_CONN) { ws.close(1013, "Sunucu dolu"); return; }
   if (isBanned(ws.clientIp)) { ws.close(1008, "Gecici olarak engellendin"); return; }
   const cur = connCountByIp.get(ws.clientIp) || 0;
   if (cur >= MAX_CONN_PER_IP) { ws.close(1008, "Cok fazla baglanti"); return; }
@@ -663,9 +708,16 @@ wss.on("connection", async (ws, req) => {
       addStrike(ws, "gecersiz JSON");
       return;
     }
-    if (!data || typeof data !== "object" || typeof data.type !== "string") {
+    if (!data || typeof data !== "object" || Array.isArray(data) || typeof data.type !== "string") {
       addStrike(ws, "gecersiz mesaj");
       return;
+    }
+    const heavy = HEAVY_TYPES.has(data.type);
+    if (!allowGlobal(heavy)) return;            // sunucu geneli asiri yuk: sessizce birak
+    if (heavy && !allowHeavy(ws)) { addStrike(ws, "agir islem seli", 0.25); return; }
+    for (const k of Object.keys(data)) {
+      if (k === "__proto__" || k === "constructor" || k === "prototype") { delete data[k]; continue; }
+      if (typeof data[k] === "string" && k !== "password") data[k] = data[k].replace(BAD_CHARS, "");
     }
 
     if (data.type === "get_captcha") {
@@ -736,6 +788,7 @@ wss.on("connection", async (ws, req) => {
 
       try {
         if (action === "register") {
+          if (MODERATORS.has(usernameLower)) { sendAuthError("Bu kullanıcı adı zaten alınmış."); return; }
           const hash = await bcrypt.hash(password, 10);
           const result = await pool.query(
             `INSERT INTO users (username_lower, username, password_hash)
@@ -761,11 +814,23 @@ wss.on("connection", async (ws, req) => {
             return;
           }
           const row = result.rows[0];
+          const fl = failedLogins.get(usernameLower);
+          if (fl && fl.until && fl.until > Date.now()) {
+            sendAuthError("Çok fazla hatalı deneme. Bu hesap birkaç dakika kilitlendi.");
+            return;
+          }
           const ok = await bcrypt.compare(password, row.password_hash);
           if (!ok) {
+            const f = failedLogins.get(usernameLower) || { n: 0, ts: Date.now(), until: 0 };
+            if (Date.now() - f.ts > 10 * 60 * 1000) { f.n = 0; f.ts = Date.now(); }
+            f.n++;
+            if (f.n >= LOGIN_FAIL_LIMIT) { f.until = Date.now() + LOGIN_LOCK_MS; f.n = 0; }
+            failedLogins.set(usernameLower, f);
+            addStrike(ws, "hatali giris", 0.5);
             sendAuthError("Kullanıcı adı veya şifre hatalı.");
             return;
           }
+          failedLogins.delete(usernameLower);
           ws.username = row.username;
           onlineByUsername.set(usernameLower, ws);
           ws.human = true; // sifreyle giris yapan hesap dogrulanmis sayilir
@@ -857,6 +922,10 @@ wss.on("connection", async (ws, req) => {
       let { avatar_data, bio } = data;
       if (typeof avatar_data === "string" && avatar_data.length > MAX_AVATAR_BYTES) {
         ws.send(JSON.stringify({ type: "profile_error", reason: "Fotoğraf çok büyük, daha küçük bir resim dene." }));
+        return;
+      }
+      if (typeof avatar_data === "string" && avatar_data && !isImageUri(avatar_data)) {
+        ws.send(JSON.stringify({ type: "profile_error", reason: "Fotoğraf biçimi geçersiz." }));
         return;
       }
       bio = typeof bio === "string" ? bio.trim().slice(0, 150) : "";
@@ -1033,6 +1102,7 @@ wss.on("connection", async (ws, req) => {
       const title = (typeof data.title === "string" ? data.title.trim() : "").slice(0, 40) || name;
       const description = typeof data.description === "string" ? data.description.trim().slice(0, 200) : "";
       const photo = typeof data.photo_data === "string" && data.photo_data ? data.photo_data : null;
+      if (photo && !isImageUri(photo)) { clanError(ws, "Avatar geçersiz (png, jpeg, gif veya webp olmalı)."); return; }
       const hidden = !!data.hidden;
       const joinMode = data.open ? "open" : "invite";
       if (!CLAN_NEW_NAME_REGEX.test(name)) { clanError(ws, "Klan adı 2-30 karakter olmalı: harf, rakam ve . - _ kullanılabilir."); return; }
@@ -1246,6 +1316,7 @@ wss.on("connection", async (ws, req) => {
         const title = typeof data.title === "string" ? data.title.trim().slice(0, 40) : undefined;
         const description = typeof data.description === "string" ? data.description.trim().slice(0, 200) : undefined;
         const photo_data = typeof data.photo_data === "string" && data.photo_data ? data.photo_data : undefined;
+        if (photo_data && !isImageUri(photo_data)) { clanError(ws, "Avatar geçersiz (png, jpeg, gif veya webp olmalı)."); return; }
         const join_mode = typeof data.open === "boolean" ? (data.open ? "open" : "invite") : undefined;
         const hidden = typeof data.hidden === "boolean" ? data.hidden : undefined;
         if ((title !== undefined && containsBannedWord(title)) || (description !== undefined && containsBannedWord(description))) {
@@ -1558,6 +1629,7 @@ wss.on("connection", async (ws, req) => {
         "INSERT INTO pixels (x,y,color) VALUES ($1,$2,$3) ON CONFLICT (x,y) DO UPDATE SET color=$3",
         [x, y, color]
       );
+      if (boardMap) boardMap.set(x * 100000 + y, { x, y, color });
     } catch (err) {
       console.error("Piksel yazilirken hata:", err);
       return;

@@ -601,7 +601,22 @@
   .cTbl td,.cTbl th{border:1px solid var(--win-border);padding:6px 8px}
   .cTbl tr:nth-child(even){background:var(--row-bg)}
   #clanBody a.lnk{color:var(--link);cursor:pointer}
-  @media(max-width:600px){.cAv.big{width:130px;height:130px}#clanBody{padding:10px}}
+  .cTabs{display:flex;flex-wrap:wrap;justify-content:center;row-gap:6px}
+  .cTabs a{padding:2px 8px}
+  .cRow .ic{width:18px;height:18px}
+  .cRow.mem{flex-wrap:wrap}
+  .cRow.mem .acts{display:flex;flex-wrap:wrap;gap:4px;align-items:center;width:100%;padding-left:26px;box-sizing:border-box}
+  .cRow.mem .acts select{width:auto !important;max-width:100%}
+  @media(max-width:600px){
+    #clanPanelInner{width:100% !important;max-width:100% !important;max-height:100dvh;box-sizing:border-box}
+    .cAv.big{width:120px;height:120px;font-size:44px}#clanBody{padding:10px 8px 14px}
+    #clanBody h2{font-size:20px}.cStat{font-size:16px;margin:8px 0}
+    .cRow{font-size:15px;gap:6px;padding:6px 4px}.cAv{width:40px;height:40px;font-size:18px}
+    .cBtns{gap:6px}.cBtns .cBtn{flex:1 1 auto;min-width:0}
+    .cTbl{font-size:12px}.cTbl td,.cTbl th{padding:4px 5px}
+    .cForm label.t,.cForm .chk{font-size:15px}
+    #clanBody input[type=text],#clanBody textarea,#clanBody select{font-size:16px}
+  }
 </style>
 </head>
 <body>
@@ -623,6 +638,7 @@
 <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
 <symbol id="i-mute" viewBox="0 0 24 24"><path d="M4 9v6h4l5 4V5L8 9z"/><path d="m17 9 5 6M22 9l-5 6"/></symbol>
 <symbol id="i-volume" viewBox="0 0 24 24"><path d="M4 9v6h4l5 4V5L8 9z"/><path d="M17 8a5 5 0 0 1 0 8"/></symbol>
+<symbol id="i-star" viewBox="0 0 24 24"><path d="M12 3l2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1L3.2 9.5l6.1-.9z"/></symbol>
 <symbol id="i-crown" viewBox="0 0 24 24"><path d="M3 8l4 4 5-7 5 7 4-4-2 11H5z"/></symbol>
 <symbol id="i-help" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.7.4-1 .9-1 1.7M12 17v.01"/></symbol>
 <symbol id="i-paperclip" viewBox="0 0 24 24"><path d="m21 11-9 9a5 5 0 0 1-7-7l9-9a3.5 3.5 0 0 1 5 5l-9 9a2 2 0 0 1-3-3l8-8"/></symbol>
@@ -1657,7 +1673,8 @@ function el(tag, attrs, ...kids){
   return e;
 }
 function clanColor(key){ let h=0; for(const ch of key) h=(h*31+ch.charCodeAt(0))%360; return `hsl(${h},65%,50%)`; }
-function sq(color){ return el("span",{class:"cSq",style:`background:${color}`}); }
+const RANK_IC={owner:"crown",mod:"shield",senior:"star",member:"user"};
+function sq(color,rank){ const s=icEl(RANK_IC[rank]||"user",true); s.style.color=color; s.style.flexShrink="0"; return s; }
 function avatar(c, big){
   const d = el("div",{class:"cAv"+(big?" big":"")});
   if(c.photo_data) d.style.backgroundImage=`url(${c.photo_data})`; else d.textContent=(c.title||c.name||"?").charAt(0).toUpperCase();
@@ -1712,7 +1729,7 @@ function viewList(){
     myClans.forEach(c=>{
       const r = RANKS[myRoleIn(c)];
       list.appendChild(el("div",{class:"cRow click",onclick:()=>go("detail",c.key,"overview")},
-        avatar(c), sq(r.color),
+        avatar(c), sq(r.color,myRoleIn(c)),
         el("div",{class:"grow"}, el("b",null,c.title)," ", el("small",null,`[${c.name}]`)),
         el("span",null,String(c.members.length))));
     });
@@ -1814,7 +1831,7 @@ function viewDetail(){
   const tabName = (TABS.find(t=>t[0]===cv.tab)||TABS[0])[1];
   setTitle(cv.tab==="overview" ? "Klan" : `Klan - ${c.name} - ${tabName}`);
   clanBody.appendChild(el("h2",null,c.title));
-  clanBody.appendChild(el("div",{class:"cTag"}, sq(clanColor(c.key)), `[${c.name}]`));
+  clanBody.appendChild(el("div",{class:"cTag"}, sq(RANKS[role].color,role), `[${c.name}]`));
   const tabs = el("div",{class:"cTabs"});
   TABS.filter(t=>!(t[0]==="edit"&&rn<3) && !(t[0]==="invites"&&rn<1)).forEach(t=>
     tabs.appendChild(el("a",{class:cv.tab===t[0]?"on":"",onclick:()=>go("detail",c.key,t[0])},t[1])));
@@ -1827,8 +1844,7 @@ function tabOverview(c,role){
   const st=c.stats;
   clanBody.appendChild(avatar(c,true));
   clanBody.appendChild(el("p",{class:"cMuted",style:"font-size:15px"},"Açıklama: "+(c.description||"-")));
-  [["Bugün Atılan Pikseller",fmtN(st.pixelsToday)],["Günlük Sıralama",st.rankDaily?"# "+st.rankDaily:"# N/A"],
-   ["Atılan Pikseller",fmtN(st.pixelsTotal)],["Genel Sıralama",st.rankTotal?"# "+st.rankTotal:"# N/A"],["Üyeler",String(c.members.length)]]
+  [["Atılan Pikseller",fmtN(st.pixelsTotal)],["Genel Sıralama",st.rankTotal?"# "+st.rankTotal:"# N/A"],["Üyeler",String(c.members.length)]]
    .forEach(([k,v])=>clanBody.appendChild(el("div",{class:"cStat"},k+": ",el("b",null,v))));
   const isRep = myRep===c.key;
   clanBody.appendChild(el("div",{class:"cBtns"},
@@ -1858,9 +1874,9 @@ function tabMembers(c,role,rn){
     }
     if(rn===3 && m.username!==loggedInUsername)
       acts.push(el("button",{class:"cBtn sm",onclick:()=>confirm(`Klan sahipliği ${m.username} kullanıcısına devredilsin mi? Sen Moderatör olacaksın.`)&&wsSend({type:"transfer_clan",clan:c.key,username:m.username})},"Devret"));
-    list.appendChild(el("div",{class:"cRow"}, sq(r.color),
+    list.appendChild(el("div",{class:"cRow mem"}, sq(r.color,m.role),
       el("a",{class:"lnk grow",onclick:()=>openProfile(m.username)},m.username," ",el("small",null,`[${r.label}]`), m.online?dotEl(true):null),
-      acts));
+      acts.length?el("div",{class:"acts"},acts):null));
   });
   clanBody.appendChild(list);
   clanBody.appendChild(el("div",{class:"cBtns"},backBtn()));
@@ -1879,7 +1895,7 @@ function tabBans(c,role,rn){
 
 function tabRoles(c){
   const l=el("div",{class:"cList"});
-  ["owner","mod","senior","member"].forEach(k=>l.appendChild(el("div",{class:"cRow"},el("div",{class:"grow"},RANKS[k].label),sq(RANKS[k].color))));
+  ["owner","mod","senior","member"].forEach(k=>l.appendChild(el("div",{class:"cRow"},sq(RANKS[k].color,k),el("div",{class:"grow"},RANKS[k].label))));
   clanBody.appendChild(l);
   clanBody.appendChild(el("p",{class:"cMuted"},"Rütbeler sabittir. Üst rütbe, alt rütbelerin tüm yetkilerine sahiptir."));
   const rows=[["Sohbet etmek, klan bilgilerini görmek","Üye"],["Davet göndermek","Kıdemli Üye"],["Üyeleri atmak / yasaklamak / yasağı kaldırmak","Moderatör"],
@@ -2052,8 +2068,14 @@ let serverOutdated = false;
 
 function connect(){
   socket=new WebSocket(BACKEND_WS_URL);
+  const IMG_OK=/^data:image\/(png|jpeg|gif|webp);base64,[A-Za-z0-9+\/]+={0,2}$/;
+  const scrub=o=>{ if(!o||typeof o!=="object") return;
+    for(const k in o){ const v=o[k];
+      if((k==="avatar_data"||k==="photo_data")&&v&&!(typeof v==="string"&&IMG_OK.test(v))) o[k]=null;
+      else if(v&&typeof v==="object") scrub(v); } };
   socket.onmessage=e=>{
-    const data=JSON.parse(e.data);
+    let data; try{ data=JSON.parse(e.data); }catch(_){ return; }
+    scrub(data);
     if(data.type==="init"){
       serverOutdated = !(data.version>=4);
       if(serverOutdated) showToast("Sunucu eski sürümde: yeni klan sistemi için server.js'i Render'a yükleyip deploy et.");
