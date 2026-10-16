@@ -92,7 +92,6 @@
   #menuSubtitle { font-size:14px; color:#aaa; margin:-8px 0 0 0; }
   #menuOnline { font-size:13px; color:#7ecbff; margin:-6px 0 0 0; }
   #menuMine { font-size:13px; color:var(--muted); margin:-4px 0 0 0; font-weight:bold }
-  #pixelBadge { background:#222; padding:6px 10px; border-radius:6px; font-size:13px; font-weight:bold; color:#ffd166; white-space:nowrap }
   #menuTotal { font-size:13px; color:var(--muted); margin:-4px 0 0 0; font-weight:bold }
   #profilePixels { font-size:14px; margin:0 0 12px 0; font-weight:bold }
   #playBtn {
@@ -718,7 +717,6 @@
 <div id="bottomLeftInfo" class="hud hidden">
   <div id="onlineBadge"><span class="dot"></span>-</div>
   <div id="coordBox">(-, -)</div>
-  <div id="pixelBadge">Pixel: -</div>
 </div>
 <div id="palette" class="hud hidden"></div>
 <div id="confirmBar">
@@ -1374,7 +1372,6 @@ function renderCounts(){
   document.getElementById("menuTotal").textContent="Toplam Atılan Pixel: "+t;
   const mine=document.getElementById("menuMine");
   if(loggedInUsername){ mine.classList.remove("hidden"); mine.textContent="Attığın Pixel: "+fmtPx(myPixels); } else mine.classList.add("hidden");
-  document.getElementById("pixelBadge").textContent=loggedInUsername?`Pixel: ${fmtPx(myPixels)} / Toplam: ${t}`:`Toplam Pixel: ${t}`;
 }
 function updateTotal(n){ if(typeof n==="number"){ totalPlacedClient=n; renderCounts(); } }
 function updateOnlineCount(count){
