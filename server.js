@@ -314,6 +314,10 @@ async function loadTotalPlaced() {
     await pool.query("INSERT INTO stats (k,v) VALUES ('total_placed',$1) ON CONFLICT (k) DO NOTHING", [totalPlaced]);
   }
 }
+let lastBroadcastTotal = -1;
+setInterval(() => { // toplam sayiyi herkese canli yay (degistiyse)
+  if (totalPlaced !== lastBroadcastTotal) { lastBroadcastTotal = totalPlaced; broadcast({ type: "total", n: totalPlaced }); }
+}, 5000).unref();
 function countPlacement(ws) {
   totalPlaced++; pendingTotal++;
   if (ws.username) {
@@ -778,7 +782,7 @@ wss.on("connection", async (ws, req) => {
       chatByChannel: Object.fromEntries(chatHistoryByChannel),
       online: wss.clients.size,
       total: totalPlaced,
-      version: 4 // 4 = klan penceresi: baslik/gizli/yasak/kidemli uye/temsil/istatistik
+      version: 5 // 4 = klan penceresi: baslik/gizli/yasak/kidemli uye/temsil/istatistik
     }).slice(1));
   } catch (err) {
     console.error("Tahta yuklenirken hata:", err);

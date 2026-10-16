@@ -91,6 +91,8 @@
   #menuTitle { font-size:32px; font-weight:bold; margin:0; color:#FFD700; }
   #menuSubtitle { font-size:14px; color:#aaa; margin:-8px 0 0 0; }
   #menuOnline { font-size:13px; color:#7ecbff; margin:-6px 0 0 0; }
+  #menuMine { font-size:13px; color:var(--muted); margin:-4px 0 0 0; font-weight:bold }
+  #pixelBadge { background:#222; padding:6px 10px; border-radius:6px; font-size:13px; font-weight:bold; color:#ffd166; white-space:nowrap }
   #menuTotal { font-size:13px; color:var(--muted); margin:-4px 0 0 0; font-weight:bold }
   #profilePixels { font-size:14px; margin:0 0 12px 0; font-weight:bold }
   #playBtn {
@@ -716,6 +718,7 @@
 <div id="bottomLeftInfo" class="hud hidden">
   <div id="onlineBadge"><span class="dot"></span>-</div>
   <div id="coordBox">(-, -)</div>
+  <div id="pixelBadge">Pixel: -</div>
 </div>
 <div id="palette" class="hud hidden"></div>
 <div id="confirmBar">
@@ -730,7 +733,8 @@
   <h1 id="menuTitle">PixelTur V2</h1>
   <p id="menuSubtitle">Türkiye'nin r/place tarzı ortak piksel tahtası</p>
   <p id="menuOnline"><span class="dot"></span>- kişi çevrimiçi</p>
-  <p id="menuTotal">Toplam Atılan Pixel: 0</p>
+  <p id="menuTotal">Toplam Atılan Pixel: -</p>
+  <p id="menuMine" class="hidden"></p>
   <p id="loggedInBar" class="hidden"></p>
   <button id="authBtn"><svg class="ic"><use href="#i-user"/></svg>Giriş Yap / Kayıt Ol</button>
   <button id="announceBtn"><svg class="ic"><use href="#i-megaphone"/></svg>Duyurular</button>
@@ -1094,7 +1098,7 @@ const SKINS=[
 ];
 const skinOpen=s=>myPixels>=s.need;
 function onMyPixels(n){
-  const prev=myPixels; myPixels=Number(n)||0;
+  const prev=myPixels; myPixels=Number(n)||0; renderCounts();
   SKINS.forEach(s=>{ if(prev<s.need && myPixels>=s.need && prev>0) showToast("Yeni tema açıldı: "+s.name+"! (Diğer Temalar)"); });
   const cur=SKINS.find(s=>s.id===document.documentElement.dataset.skin);
   if(cur && !skinOpen(cur)) applySkin(null);
@@ -1363,7 +1367,16 @@ chatTextInput.addEventListener("keydown", e=>{ if(e.key==="Enter") sendChat(); }
 const onlineBadge=document.getElementById("onlineBadge");
 const menuOnline=document.getElementById("menuOnline");
 const chatOnline=document.getElementById("chatOnline");
-function updateTotal(n){ if(typeof n==="number") document.getElementById("menuTotal").textContent="Toplam Atılan Pixel: "+n.toLocaleString("tr-TR"); }
+let totalPlacedClient=null;
+const fmtPx=n=>Number(n).toLocaleString("tr-TR");
+function renderCounts(){
+  const t=totalPlacedClient===null?"-":fmtPx(totalPlacedClient);
+  document.getElementById("menuTotal").textContent="Toplam Atılan Pixel: "+t;
+  const mine=document.getElementById("menuMine");
+  if(loggedInUsername){ mine.classList.remove("hidden"); mine.textContent="Attığın Pixel: "+fmtPx(myPixels); } else mine.classList.add("hidden");
+  document.getElementById("pixelBadge").textContent=loggedInUsername?`Pixel: ${fmtPx(myPixels)} / Toplam: ${t}`:`Toplam Pixel: ${t}`;
+}
+function updateTotal(n){ if(typeof n==="number"){ totalPlacedClient=n; renderCounts(); } }
 function updateOnlineCount(count){
   setDotText(onlineBadge, String(count));
   setDotText(menuOnline, `${count} kişi çevrimiçi`);
@@ -1443,7 +1456,7 @@ document.getElementById("chatClearBtn").addEventListener("click", ()=>{
 
 function logout(){
   if(socket && socket.readyState===WebSocket.OPEN) socket.send(JSON.stringify({type:"logout"}));
-  loggedInUsername = null;
+  loggedInUsername = null; myPixels = 0; renderCounts();
   setModState(false);
   handleMyClans({clans:[]}); clanInvites=[]; renderClanInvites();
   localStorage.removeItem("placeturk_logged_in_as");
@@ -2164,8 +2177,8 @@ function connect(){
     scrub(data);
     if(data.type==="init"){
       updateTotal(data.total);
-      serverOutdated = !(data.version>=4);
-      if(serverOutdated) showToast("Sunucu eski sürümde: yeni klan sistemi için server.js'i Render'a yükleyip deploy et.");
+      serverOutdated = !(data.version>=5);
+      if(serverOutdated) showToast("Sunucu eski sürümde: güncel server.js dosyasını Render'a yükleyip deploy et (piksel sayacı ve klanlar için).");
       boardMap=new Map(data.board.map(p=>[p.x+","+p.y, p.color]));
       drawBoard();
       boardLoaded=true; loadingMsg.classList.add("hidden");
@@ -2175,7 +2188,8 @@ function connect(){
       }
       if(typeof data.online==="number") updateOnlineCount(data.online);
     }
-    if(data.type==="update"){ applyPixel(data.x,data.y,data.color); }
+    if(data.type==="update"){ applyPixel(data.x,data.y,data.color); if(totalPlacedClient!==null){ totalPlacedClient++; renderCounts(); } }
+    if(data.type==="total"){ updateTotal(data.n); }
     if(data.type==="chat"){
       addChatMessage(data);
       if(chatPanel.classList.contains("hidden")){ unreadChat++; updateChatBadge(); }
@@ -2225,7 +2239,7 @@ function connect(){
     // Sunucu tarafinda oturum baglantiyla birlikte duser; arayuz hala "giris yapmis"
     // gorunurse klan/sohbet islemleri sessizce calismaz. Bu yuzden durumu sifirla.
     if(loggedInUsername){
-      loggedInUsername = null; setModState(false);
+      loggedInUsername = null; myPixels = 0; renderCounts(); setModState(false);
       handleMyClans({clans:[]}); clanInvites=[]; renderClanInvites();
       updateLoggedInUI();
       showToast("Bağlantı koptu, tekrar giriş yapman gerekiyor.");
