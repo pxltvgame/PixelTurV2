@@ -91,6 +91,8 @@
   #menuTitle { font-size:32px; font-weight:bold; margin:0; color:#FFD700; }
   #menuSubtitle { font-size:14px; color:#aaa; margin:-8px 0 0 0; }
   #menuOnline { font-size:13px; color:#7ecbff; margin:-6px 0 0 0; }
+  #menuTotal { font-size:13px; color:var(--muted); margin:-4px 0 0 0; font-weight:bold }
+  #profilePixels { font-size:14px; margin:0 0 12px 0; font-weight:bold }
   #playBtn {
     background:#2ecc71; color:#fff; border:none; border-radius:10px;
     padding:14px 36px; font-size:18px; font-weight:bold; cursor:pointer;
@@ -617,6 +619,37 @@
     .cForm label.t,.cForm .chk{font-size:15px}
     #clanBody input[type=text],#clanBody textarea,#clanBody select{font-size:16px}
   }
+
+  /* ===== Diger Temalar: logo renkleri (sari-pembe gecis, kirmizi, mor, mavi) + jel parlama + siyah kontur ===== */
+  #otherThemesBtn{position:fixed;bottom:70px;left:20px;z-index:101;padding:10px 14px;font-size:13px;font-weight:bold;cursor:pointer;background:#333;color:#ddd;border:1px solid #444}
+  #otherThemesBtn{background:var(--btn-bg);color:var(--btn-fg);border:1px solid var(--win-border)}
+  #skinPanel{position:fixed;inset:0;z-index:135;display:flex;align-items:center;justify-content:center;padding:24px;box-sizing:border-box;background:rgba(0,0,0,.4)}
+  #skinInner{background:var(--win-bg);color:var(--win-fg);border:1px solid var(--win-border);padding:18px 20px;max-width:380px;width:100%;box-sizing:border-box;font-family:Arial,sans-serif;max-height:90vh;overflow-y:auto}
+  #skinInner h2{background:var(--bar-bg);border:1px solid var(--win-border);padding:6px 8px;font-size:16px;margin:0 0 10px 0}
+  .skinItem{display:flex;align-items:center;gap:12px;width:100%;margin:6px 0;padding:8px 10px;background:var(--btn-bg);color:var(--btn-fg);border:1px solid var(--win-border);font-size:15px;font-weight:bold;cursor:pointer;text-align:left;font-family:Arial,sans-serif}
+  .skinItem .sw{width:34px;height:34px;flex-shrink:0;border:2px solid #000}
+  .skinItem .on{margin-left:auto;font-size:13px}
+  #closeSkinBtn{margin-top:10px;width:100%;padding:8px;background:var(--btn-bg);color:var(--btn-fg);border:1px solid var(--win-border);font-weight:bold;cursor:pointer}
+  :root[data-skin] button{background-image:linear-gradient(rgba(255,255,255,.5),rgba(255,255,255,0) 48%,rgba(0,0,0,.12));box-shadow:inset 0 2px 0 rgba(255,255,255,.55),inset 0 -2px 0 rgba(0,0,0,.18)}
+  :root[data-skin] button,:root[data-skin] input,:root[data-skin] textarea,:root[data-skin] select,:root[data-skin] #authPanelInner,:root[data-skin] #announcePanelInner,:root[data-skin] #chatPanelInner,:root[data-skin] #profileModalInner,:root[data-skin] #dmPanelInner,:root[data-skin] #clanPanelInner,:root[data-skin] #chatRulesInner,:root[data-skin] #settingsPanelInner,:root[data-skin] #helpPanelInner,:root[data-skin] #skinInner,:root[data-skin] #gameMenu{border-radius:12px !important}
+  :root[data-skin] #gameMenu button{background-image:none;box-shadow:none}
+  :root[data-skin] #clanTitleBar{border-radius:10px 10px 0 0 !important}
+  :root[data-skin] button,:root[data-skin] #authPanelInner,:root[data-skin] #announcePanelInner,:root[data-skin] #chatPanelInner,:root[data-skin] #profileModalInner,:root[data-skin] #dmPanelInner,:root[data-skin] #clanPanelInner,:root[data-skin] #chatRulesInner,:root[data-skin] #settingsPanelInner,:root[data-skin] #helpPanelInner,:root[data-skin] #skinInner,:root[data-skin] #gameMenu{border-width:2px}
+  :root[data-skin] h2{border-width:2px !important}
+  :root[data-skin] #mainMenu{background-size:14px 14px,10px 10px,8px 8px,12px 12px,9px 9px,100% 100%;background-repeat:no-repeat}
+  :root[data-skin] #menuTitle{text-shadow:2px 2px 0 rgba(0,0,0,.35)}
+  /* Gun Batimi: sari -> pembe, beyaz P gibi beyaz butonlar, siyah kontur */
+  :root[data-skin="sunset"]{--win-bg:#fffbe3;--win-fg:#1c0a2e;--win-border:#000;--bar-bg:#ffee33;--btn-bg:#ffffff;--btn-fg:#1c0a2e;--input-bg:#fff;--name-bg:#ffd9f1;--name-fg:#7a12b8;--muted:#7d5b7f;--link:#9b1fd9;--row-bg:#ffe8f5}
+  :root[data-skin="sunset"] #mainMenu{background-image:radial-gradient(circle,#fff 0 2.5px,transparent 3.5px),radial-gradient(circle,#fff 0 4px,transparent 5px),radial-gradient(circle,#fff 0 2px,transparent 3px),radial-gradient(circle,#fff 0 3px,transparent 4px),radial-gradient(circle,#fff 0 2px,transparent 3px),linear-gradient(115deg,#ffff00 0%,#ffe98a 38%,#ffb3b0 62%,#ff6fd0 85%,#ff3fc0 100%);background-position:8% 14%,92% 86%,93% 36%,7% 72%,88% 12%,0 0}
+  /* Mor Jel: T ve u harflerinin moru */
+  :root[data-skin="purple"]{--win-bg:#2b0e4c;--win-fg:#fbefff;--win-border:#0b0216;--bar-bg:#c026f0;--btn-bg:#a21fd6;--btn-fg:#ffffff;--input-bg:#1a0731;--name-bg:#4a1a7a;--name-fg:#f3c8ff;--muted:#d1a8ee;--link:#ff9bf0;--row-bg:#3a1466}
+  :root[data-skin="purple"] #mainMenu{background-image:radial-gradient(circle,#fff 0 2.5px,transparent 3.5px),radial-gradient(circle,#fff 0 4px,transparent 5px),radial-gradient(circle,#fff 0 2px,transparent 3px),radial-gradient(circle,#fff 0 3px,transparent 4px),radial-gradient(circle,#fff 0 2px,transparent 3px),linear-gradient(135deg,#6a17b8 0%,#c026f0 55%,#ff4fc8 100%);background-position:8% 14%,92% 86%,93% 36%,7% 72%,88% 12%,0 0}
+  /* Kirmizi Jel: V2 telefon ahizesinin kirmizisi */
+  :root[data-skin="red"]{--win-bg:#3b0707;--win-fg:#fff1f1;--win-border:#120101;--bar-bg:#ff1a1a;--btn-bg:#e60f0f;--btn-fg:#ffffff;--input-bg:#240303;--name-bg:#5a1010;--name-fg:#ffc9c9;--muted:#ffb0b0;--link:#ffd34d;--row-bg:#4d0c0c}
+  :root[data-skin="red"] #mainMenu{background-image:radial-gradient(circle,#fff 0 2.5px,transparent 3.5px),radial-gradient(circle,#fff 0 4px,transparent 5px),radial-gradient(circle,#fff 0 2px,transparent 3px),radial-gradient(circle,#fff 0 3px,transparent 4px),radial-gradient(circle,#fff 0 2px,transparent 3px),linear-gradient(135deg,#ff0000 0%,#c40000 55%,#5a0000 100%);background-position:8% 14%,92% 86%,93% 36%,7% 72%,88% 12%,0 0}
+  /* Mavi Jel: r harfinin mavisi */
+  :root[data-skin="blue"]{--win-bg:#0e0e55;--win-fg:#eef0ff;--win-border:#02021a;--bar-bg:#3a3af0;--btn-bg:#3030d8;--btn-fg:#ffffff;--input-bg:#08083a;--name-bg:#25257a;--name-fg:#c8ccff;--muted:#a9afee;--link:#8fd8ff;--row-bg:#18186a}
+  :root[data-skin="blue"] #mainMenu{background-image:radial-gradient(circle,#fff 0 2.5px,transparent 3.5px),radial-gradient(circle,#fff 0 4px,transparent 5px),radial-gradient(circle,#fff 0 2px,transparent 3px),radial-gradient(circle,#fff 0 3px,transparent 4px),radial-gradient(circle,#fff 0 2px,transparent 3px),linear-gradient(135deg,#4a4aff 0%,#2323c0 55%,#0b0b52 100%);background-position:8% 14%,92% 86%,93% 36%,7% 72%,88% 12%,0 0}
 </style>
 </head>
 <body>
@@ -645,6 +678,7 @@
 <symbol id="i-link" viewBox="0 0 24 24"><path d="M10 14a4 4 0 0 0 6 0l3-3a4 4 0 0 0-6-6l-1 1M14 10a4 4 0 0 0-6 0l-3 3a4 4 0 0 0 6 6l1-1"/></symbol>
 <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M20 12a8 8 0 1 1-2.5-5.8M20 4v5h-5"/></symbol>
 <symbol id="i-save" viewBox="0 0 24 24"><path d="M5 3h12l3 3v15H5zM8 3v6h8V3M8 21v-7h8v7"/></symbol>
+<symbol id="i-lock" viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></symbol>
 <symbol id="i-pin" viewBox="0 0 24 24"><path d="M12 21s7-6.5 7-12a7 7 0 0 0-14 0c0 5.5 7 12 7 12z"/><circle cx="12" cy="9" r="2.5"/></symbol>
 </svg>
 
@@ -696,10 +730,12 @@
   <h1 id="menuTitle">PixelTur V2</h1>
   <p id="menuSubtitle">Türkiye'nin r/place tarzı ortak piksel tahtası</p>
   <p id="menuOnline"><span class="dot"></span>- kişi çevrimiçi</p>
+  <p id="menuTotal">Toplam Atılan Pixel: 0</p>
   <p id="loggedInBar" class="hidden"></p>
   <button id="authBtn"><svg class="ic"><use href="#i-user"/></svg>Giriş Yap / Kayıt Ol</button>
   <button id="announceBtn"><svg class="ic"><use href="#i-megaphone"/></svg>Duyurular</button>
   <button id="chatBtn"><svg class="ic"><use href="#i-chat"/></svg>Sohbet<span class="chatBadge hidden"></span></button>
+  <button id="otherThemesBtn" type="button"><svg class="ic"><use href="#i-theme"/></svg>Diğer Temalar</button>
   <button id="menuThemeBtn" type="button"><svg class="ic"><use href="#i-theme"/></svg>Tema</button>
   <button id="clanMenuBtn"><svg class="ic"><use href="#i-shield"/></svg>Klanlar</button>
   <button id="playBtn">Oyuna Başla</button>
@@ -744,10 +780,12 @@
   </div>
 </div>
 
+<div id="skinPanel" class="hidden"><div id="skinInner"><h2>Diğer Temalar</h2><div id="skinList"></div><button id="closeSkinBtn" type="button">Kapat</button></div></div>
 <div id="settingsPanel" class="hidden">
   <div id="settingsPanelInner">
     <h2>Ayarlar</h2>
     <div class="setRow"><span>Tema</span><button id="setThemeBtn" type="button"></button></div>
+    <div class="setRow"><span>Diğer Temalar</span><button id="setSkinBtn" type="button">Seç</button></div>
     <div class="setRow"><span>Ses bildirimi (cooldown)</span><button id="setSoundBtn" type="button"></button></div>
     <div class="setRow"><span>Titreşim</span><button id="setVibBtn" type="button"></button></div>
     <button id="closeSettingsBtn" type="button">Kapat</button>
@@ -788,6 +826,7 @@
     <h2 id="profileUsername"></h2>
     <p id="profileClanTag" class="hidden"></p>
     <p id="profileBio"></p>
+    <p id="profilePixels"></p>
     <div id="profileActions"></div>
     <button id="closeProfileBtn">Kapat</button>
   </div>
@@ -1043,9 +1082,54 @@ document.querySelectorAll(".channelItem").forEach(item=>item.addEventListener("c
 channelPickerBtn.addEventListener("click",()=>channelPickerList.classList.toggle("hidden"));
 
 /* Acik/koyu tema */
-function applyTheme(t){document.documentElement.dataset.theme=t;localStorage.setItem("placeturk_theme",t);}
-applyTheme(localStorage.getItem("placeturk_theme")||"light");
-function toggleTheme(){applyTheme(document.documentElement.dataset.theme==="dark"?"light":"dark");}
+function applyTheme(t){document.documentElement.dataset.theme=t;try{localStorage.setItem("placeturk_theme",t);}catch(e){}}
+applyTheme((()=>{try{return localStorage.getItem("placeturk_theme");}catch(e){return null;}})()||"light");
+/* Logo renklerinden turetilmis temalar */
+let myPixels=0;
+const SKINS=[
+  {id:"blue",name:"Mavi Jel",mode:"dark",need:100,sw:"linear-gradient(135deg,#4a4aff,#1a1aa8)"},
+  {id:"red",name:"Kırmızı Jel",mode:"dark",need:150,sw:"linear-gradient(135deg,#ff0000,#8a0000)"},
+  {id:"purple",name:"Mor Jel",mode:"dark",need:175,sw:"linear-gradient(135deg,#6a17b8,#c026f0)"},
+  {id:"sunset",name:"Gün Batımı",mode:"light",need:200,sw:"linear-gradient(135deg,#ffff00,#ff4fc8)"}
+];
+const skinOpen=s=>myPixels>=s.need;
+function onMyPixels(n){
+  const prev=myPixels; myPixels=Number(n)||0;
+  SKINS.forEach(s=>{ if(prev<s.need && myPixels>=s.need && prev>0) showToast("Yeni tema açıldı: "+s.name+"! (Diğer Temalar)"); });
+  const cur=SKINS.find(s=>s.id===document.documentElement.dataset.skin);
+  if(cur && !skinOpen(cur)) applySkin(null);
+}
+function applySkin(id){
+  const s=SKINS.find(x=>x.id===id);
+  if(s){ document.documentElement.dataset.skin=s.id; applyTheme(s.mode); try{localStorage.setItem("placeturk_skin",s.id);}catch(e){} }
+  else { delete document.documentElement.dataset.skin; try{localStorage.removeItem("placeturk_skin");}catch(e){} }
+}
+try{ applySkin(localStorage.getItem("placeturk_skin")); }catch(e){}
+function toggleTheme(){ if(document.documentElement.dataset.skin) applySkin(null); applyTheme(document.documentElement.dataset.theme==="dark"?"light":"dark"); }
+const skinPanel=document.getElementById("skinPanel");
+function openSkinPanel(){
+  const list=document.getElementById("skinList"); list.innerHTML="";
+  const cur=document.documentElement.dataset.skin||"";
+  const info=document.createElement("p"); info.style.cssText="margin:0 0 8px;font-size:13px;color:var(--muted)";
+  info.textContent=loggedInUsername?`Boyadığın pixel: ${myPixels.toLocaleString("tr-TR")}. Temalar pixel boyadıkça açılır.`:"Temaları açmak için giriş yapıp pixel boya.";
+  list.appendChild(info);
+  const mk=(name,sw,active,fn,lockText)=>{ const b=document.createElement("button"); b.type="button"; b.className="skinItem";
+    const s=document.createElement("span"); s.className="sw"; s.style.background=sw; b.appendChild(s);
+    b.appendChild(document.createTextNode(name));
+    if(lockText){ b.disabled=true; b.style.opacity=".6"; b.style.cursor="not-allowed"; const o=document.createElement("span"); o.className="on"; o.appendChild(icEl("lock",true)); o.appendChild(document.createTextNode(lockText)); b.appendChild(o); }
+    else if(active){ const o=document.createElement("span"); o.className="on"; o.textContent="✓ Seçili"; b.appendChild(o); }
+    if(!lockText) b.addEventListener("click",()=>{ fn(); skinPanel.classList.add("hidden"); if(typeof refreshSettingsUI==="function") refreshSettingsUI(); });
+    list.appendChild(b); };
+  SKINS.forEach(s=>mk(s.name,s.sw,cur===s.id,()=>applySkin(s.id),skinOpen(s)?null:` ${Math.min(myPixels,s.need)}/${s.need}`));
+  const dark=document.documentElement.dataset.theme==="dark";
+  mk("Varsayılan Açık","#f4f4f4",!cur&&!dark,()=>{applySkin(null);applyTheme("light");});
+  mk("Varsayılan Koyu","#1b1b1b",!cur&&dark,()=>{applySkin(null);applyTheme("dark");});
+  skinPanel.classList.remove("hidden");
+}
+document.getElementById("otherThemesBtn").addEventListener("click",openSkinPanel);
+document.getElementById("setSkinBtn").addEventListener("click",()=>{ document.getElementById("settingsPanel").classList.add("hidden"); openSkinPanel(); });
+document.getElementById("closeSkinBtn").addEventListener("click",()=>skinPanel.classList.add("hidden"));
+skinPanel.addEventListener("click",e=>{ if(e.target===skinPanel) skinPanel.classList.add("hidden"); });
 document.getElementById("chatThemeBtn").addEventListener("click",toggleTheme);
 document.getElementById("menuThemeBtn").addEventListener("click",toggleTheme);
 
@@ -1279,6 +1363,7 @@ chatTextInput.addEventListener("keydown", e=>{ if(e.key==="Enter") sendChat(); }
 const onlineBadge=document.getElementById("onlineBadge");
 const menuOnline=document.getElementById("menuOnline");
 const chatOnline=document.getElementById("chatOnline");
+function updateTotal(n){ if(typeof n==="number") document.getElementById("menuTotal").textContent="Toplam Atılan Pixel: "+n.toLocaleString("tr-TR"); }
 function updateOnlineCount(count){
   setDotText(onlineBadge, String(count));
   setDotText(menuOnline, `${count} kişi çevrimiçi`);
@@ -1442,7 +1527,7 @@ function openProfile(username){
   profileModal.classList.remove("hidden");
   profileUsername.textContent = "Yükleniyor...";
   profileAvatarBig.style.backgroundImage = ""; profileAvatarBig.textContent = "";
-  profileBio.textContent = ""; profileClanTag.classList.add("hidden");
+  profileBio.textContent = ""; document.getElementById("profilePixels").textContent = ""; profileClanTag.classList.add("hidden");
   profileActions.innerHTML = "";
 }
 
@@ -1511,6 +1596,7 @@ function renderProfile(data){
   }
   setNameOnline(profileUsername, data.username, data.online);
   profileBio.textContent = data.bio || "(Henüz bir şey yazmamış)";
+  document.getElementById("profilePixels").textContent = "Toplam Atılan Pixel: " + Number(data.pixels||0).toLocaleString("tr-TR");
   if(data.avatar_data){
     profileAvatarBig.style.backgroundImage = `url(${data.avatar_data})`;
     profileAvatarBig.textContent = "";
@@ -2077,6 +2163,7 @@ function connect(){
     let data; try{ data=JSON.parse(e.data); }catch(_){ return; }
     scrub(data);
     if(data.type==="init"){
+      updateTotal(data.total);
       serverOutdated = !(data.version>=4);
       if(serverOutdated) showToast("Sunucu eski sürümde: yeni klan sistemi için server.js'i Render'a yükleyip deploy et.");
       boardMap=new Map(data.board.map(p=>[p.x+","+p.y, p.color]));
@@ -2097,7 +2184,8 @@ function connect(){
     if(data.type==="chat_clear"){ clearChat(data.channel); }
     if(data.type==="mod_info"){ showToast(data.text); }
     if(data.type==="chat_blocked"){ showChatBlockedNotice(data.reason); }
-    if(data.type==="online"){ updateOnlineCount(data.count); }
+    if(data.type==="online"){ updateOnlineCount(data.count); updateTotal(data.total); }
+    if(data.type==="my_pixels"){ onMyPixels(data.n); }
     if(data.type==="auth_ok"){ handleAuthOk(data); }
     if(data.type==="auth_error"){ handleAuthError(data); }
     if(data.type==="need_human"){ handleNeedHuman(data); }

@@ -38,13 +38,53 @@ const mutedUntil = new Map(); // usernameLower -> bitis zamani (ms)
 
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
-  ssl: { rejectUnauthorized: false }
+  ssl: { rejectUnauthorized: false },
+  max: 10,                        // Neon ucretsiz plan baglanti sinirina saygi
+  idleTimeoutMillis: 30000,
+  connectionTimeoutMillis: 5000,  // havuz doluysa sonsuza kadar bekleme
+  statement_timeout: 8000,        // takilan sorgu 8 sn'de iptal
+  query_timeout: 10000
 });
+pool.on("error", (e) => console.error("[pg] havuz hatasi:", e.message));
+process.on("uncaughtException", (e) => console.error("[fatal-yakalandi]", e));
+process.on("unhandledRejection", (e) => console.error("[reddedilen-promise]", e));
+
+// bcrypt CPU'yu bogmasin: ayni anda en fazla 3 islem, kuyruk dolarsa "yogun" de
+let bcryptActive = 0; const bcryptQueue = [];
+function bcryptLimited(fn) {
+  return new Promise((resolve, reject) => {
+    const run = () => { bcryptActive++; fn().then(resolve, reject).finally(() => { bcryptActive--; const n = bcryptQueue.shift(); if (n) n(); }); };
+    if (bcryptActive < 3) run();
+    else if (bcryptQueue.length < 15) bcryptQueue.push(run);
+    else reject(new Error("busy"));
+  });
+}
+let DUMMY_HASH = "";  // kullanici yokken sure sizintisini onler (acilista gercek hash uretilir)
+setTimeout(() => { bcrypt.hash("dummy-" + Date.now(), 10).then((h) => { DUMMY_HASH = h; }).catch(() => {}); }, 100);
+const regLog = []; // genel kayit hizi
+// Saldiri modu: kisa surede cok baglanti gelirse limitler otomatik sikilasir
+let connWinStart = 0, connWinN = 0, attackUntil = 0;
+const ATTACK_CONN_PER_10S = Number(process.env.ATTACK_CONN_PER_10S) || 250;
+function noteConn() {
+  const now = Date.now();
+  if (now - connWinStart > 10000) { connWinStart = now; connWinN = 0; }
+  if (++connWinN > ATTACK_CONN_PER_10S && now > attackUntil) { attackUntil = now + 5 * 60000; console.warn("[guard] SALDIRI MODU acildi (5 dk)"); }
+}
+const underAttack = () => Date.now() < attackUntil;
+const ALLOWED_ORIGINS = (process.env.ALLOWED_ORIGINS || "").split(",").map((x) => x.trim()).filter(Boolean);
+let onlineTimer = null;
+function scheduleOnline() { // baglanti firtinasinda herkese tek tek yayin yapma
+  if (onlineTimer) return;
+  onlineTimer = setTimeout(() => { onlineTimer = null; broadcast({ type: "online", count: wss.clients.size, total: totalPlaced }); }, 1500);
+}
 
 // Basit bir HTTP sunucu: hem WebSocket'i taşımak hem de
 // dış bir servisin (cron-job.org, UptimeRobot vb.) sunucuyu
 // uyanık tutmak için "ping" atabileceği bir healthcheck sağlamak için.
 const server = http.createServer({ connectionsCheckingInterval: 2000, headersTimeout: 10000, requestTimeout: 15000, keepAliveTimeout: 5000, maxHeaderSize: 8192 }, (req, res) => {
+  res.setHeader("X-Content-Type-Options", "nosniff");
+  res.setHeader("X-Frame-Options", "DENY");
+  res.setHeader("Referrer-Policy", "no-referrer");
   if (req.url === "/health") {
     res.writeHead(200, { "Content-Type": "text/plain" });
     res.end("ok");
@@ -141,6 +181,11 @@ function allowHeavy(ws) {
   ws.hb.t -= 1;
   return true;
 }
+// Haritalarin sinirsiz buyumesini onle (sahte IP seli)
+function capMaps() {
+  for (const m of [lastChatAt, repeatTracker, lastAuthAt, lastDmAt, lastClanChatAt, lastInviteAt, lastCaptchaAt, humanIps, lastPlacedAt]) if (m.size > 20000) m.clear();
+}
+setInterval(() => { try { capMaps(); } catch {} }, 60 * 1000).unref();
 // Bellek temizligi
 setInterval(() => {
   const now = Date.now();
@@ -194,6 +239,7 @@ function makeCaptcha() {
   svg += "</svg>";
   const id = crypto.randomBytes(12).toString("hex");
   if (captchas.size > 3000) captchas.clear(); // asiri dolmaya karsi
+  if (captchas.size > 3000) captchas.delete(captchas.keys().next().value);
   captchas.set(id, { answer: text, exp: Date.now() + CAPTCHA_TTL_MS, tries: 0 });
   return { id, svg };
 }
@@ -256,16 +302,49 @@ function creditClanPixel(lower) {
   if (!nl || !myClanSet(lower).has(nl)) return;
   pendingClanPixels.set(nl, (pendingClanPixels.get(nl) || 0) + 1);
 }
+// Kullanici basina ve toplam piksel sayaclari (bellekte tutulur, 10 sn'de bir DB'ye yazilir)
+const pendingUserPixels = new Map(); // usernameLower -> eklenecek
+let totalPlaced = 0, pendingTotal = 0;
+async function loadTotalPlaced() {
+  const r = await pool.query("SELECT v FROM stats WHERE k='total_placed'");
+  if (r.rows.length) totalPlaced = Number(r.rows[0].v);
+  else {
+    const c = await pool.query("SELECT COUNT(*) AS n FROM pixels");
+    totalPlaced = Number(c.rows[0].n);
+    await pool.query("INSERT INTO stats (k,v) VALUES ('total_placed',$1) ON CONFLICT (k) DO NOTHING", [totalPlaced]);
+  }
+}
+function countPlacement(ws) {
+  totalPlaced++; pendingTotal++;
+  if (ws.username) {
+    const l = ws.username.toLocaleLowerCase("tr");
+    pendingUserPixels.set(l, (pendingUserPixels.get(l) || 0) + 1);
+    ws.pixels = (ws.pixels || 0) + 1;
+    try { ws.send(JSON.stringify({ type: "my_pixels", n: ws.pixels })); } catch {}
+  }
+}
 setInterval(() => {
-  if (!pendingClanPixels.size) return;
-  const batch = [...pendingClanPixels]; pendingClanPixels.clear();
-  for (const [nl, n] of batch) pool.query("UPDATE clans SET pixels_total = pixels_total + $2 WHERE name_lower=$1", [nl, n]).catch(() => {});
+  if (pendingClanPixels.size) {
+    const batch = [...pendingClanPixels]; pendingClanPixels.clear();
+    for (const [nl, n] of batch) pool.query("UPDATE clans SET pixels_total = pixels_total + $2 WHERE name_lower=$1", [nl, n]).catch(() => {});
+  }
+  if (pendingUserPixels.size) {
+    const batch = [...pendingUserPixels]; pendingUserPixels.clear();
+    for (const [l, n] of batch) pool.query("UPDATE users SET pixels_placed = pixels_placed + $2 WHERE username_lower=$1", [l, n]).catch(() => {});
+  }
+  if (pendingTotal) {
+    const n = pendingTotal; pendingTotal = 0;
+    pool.query("INSERT INTO stats (k,v) VALUES ('total_placed',$1) ON CONFLICT (k) DO UPDATE SET v = stats.v + $1", [n]).catch(() => {});
+  }
 }, 10000).unref();
 async function loadRepClan(ws) {
   const lower = ws.username.toLocaleLowerCase("tr");
   const r = await pool.query("SELECT rep_clan FROM users WHERE username_lower=$1", [lower]);
   if (r.rows.length && r.rows[0].rep_clan) repClanByUser.set(lower, r.rows[0].rep_clan);
   else repClanByUser.delete(lower);
+  const pc = await pool.query("SELECT pixels_placed FROM users WHERE username_lower=$1", [lower]);
+  ws.pixels = (pc.rows.length ? Number(pc.rows[0].pixels_placed) : 0) + (pendingUserPixels.get(lower) || 0);
+  try { ws.send(JSON.stringify({ type: "my_pixels", n: ws.pixels })); } catch {}
 }
 
 function myClanSet(lower) { return userClans.get(lower) || new Set(); }
@@ -504,7 +583,9 @@ function checkMuted(ws, replyType) {
 function broadcast(obj) {
   const payload = JSON.stringify(obj);
   wss.clients.forEach((client) => {
-    if (client.readyState === WebSocket.OPEN) client.send(payload);
+    if (client.readyState !== WebSocket.OPEN) return;
+    if (client.bufferedAmount > 2 * 1024 * 1024) { client.terminate(); return; } // yavas tuketici bellegi sismesin
+    client.send(payload);
   });
 }
 
@@ -591,6 +672,8 @@ async function ensureSchema() {
   await pool.query(`ALTER TABLE clans ADD COLUMN IF NOT EXISTS hidden BOOLEAN NOT NULL DEFAULT FALSE;`);
   await pool.query(`ALTER TABLE clans ADD COLUMN IF NOT EXISTS pixels_total BIGINT NOT NULL DEFAULT 0;`);
   await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS rep_clan TEXT;`);
+  await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS pixels_placed BIGINT NOT NULL DEFAULT 0;`);
+  await pool.query(`CREATE TABLE IF NOT EXISTS stats (k TEXT PRIMARY KEY, v BIGINT NOT NULL DEFAULT 0);`);
   await pool.query(`
     CREATE TABLE IF NOT EXISTS clan_daily (
       clan_name_lower TEXT NOT NULL REFERENCES clans(name_lower) ON DELETE CASCADE,
@@ -621,7 +704,7 @@ async function ensureSchema() {
 }
 
 // Tahta bellekte tutulur: her baglantida tum tabloyu taramak DoS'a acik olurdu.
-let boardMap = null, boardLoading = null;
+let boardMap = null, boardLoading = null, boardJson = null;
 async function loadBoard() {
   if (!boardMap) {
     if (!boardLoading) boardLoading = pool.query("SELECT x,y,color FROM pixels").then((res) => {
@@ -629,7 +712,9 @@ async function loadBoard() {
     }).finally(() => { boardLoading = null; });
     await boardLoading;
   }
-  return [...boardMap.values()];
+  // JSON metni bir kez uretilir, piksel degisene kadar her baglantiya ayni metin gider
+  if (boardJson === null) boardJson = JSON.stringify([...boardMap.values()]);
+  return boardJson;
 }
 
 // Cloudflare/Render arkasinda degilse (dogrudan internete aciksa) TRUST_PROXY_HEADERS=0 yapin
@@ -660,25 +745,27 @@ wss.on("connection", async (ws, req) => {
   ws.on("error", () => {});
 
   // --- Bot korumasi: ban / baglanti sayisi / baglanti hizi ---
+  noteConn();
+  if (ALLOWED_ORIGINS.length && !ALLOWED_ORIGINS.includes(req.headers.origin || "")) { ws.close(1008, "Origin"); return; }
   if (wss.clients.size > MAX_TOTAL_CONN) { ws.close(1013, "Sunucu dolu"); return; }
   if (isBanned(ws.clientIp)) { ws.close(1008, "Gecici olarak engellendin"); return; }
   const cur = connCountByIp.get(ws.clientIp) || 0;
-  if (cur >= MAX_CONN_PER_IP) { ws.close(1008, "Cok fazla baglanti"); return; }
+  if (cur >= (underAttack() ? 2 : MAX_CONN_PER_IP)) { ws.close(1008, "Cok fazla baglanti"); return; }
   const nowC = Date.now();
   const log = (newConnLog.get(ws.clientIp) || []).filter((t) => nowC - t < 60000);
   log.push(nowC);
   newConnLog.set(ws.clientIp, log);
-  if (log.length > MAX_NEW_CONN_PER_MIN) { banIp(ws.clientIp, "baglanti seli"); ws.close(1008, "Cok fazla baglanti"); return; }
+  if (log.length > (underAttack() ? 6 : MAX_NEW_CONN_PER_MIN)) { banIp(ws.clientIp, "baglanti seli"); ws.close(1008, "Cok fazla baglanti"); return; }
   connCountByIp.set(ws.clientIp, cur + 1);
   ws.on("close", () => {
     const n = (connCountByIp.get(ws.clientIp) || 1) - 1;
     if (n <= 0) connCountByIp.delete(ws.clientIp); else connCountByIp.set(ws.clientIp, n);
   });
-  broadcast({ type: "online", count: wss.clients.size });
+  scheduleOnline();
 
   ws.on("close", () => {
     // biraz gecikmeyle yayinlayalim ki ws zaten clients setinden cikmis olsun
-    setTimeout(() => broadcast({ type: "online", count: wss.clients.size }), 0);
+    scheduleOnline();
     if (ws.username) {
       const lower = ws.username.toLocaleLowerCase("tr");
       if (onlineByUsername.get(lower) === ws) onlineByUsername.delete(lower);
@@ -687,13 +774,12 @@ wss.on("connection", async (ws, req) => {
 
   try {
     const board = await loadBoard();
-    ws.send(JSON.stringify({
-      type: "init",
-      board,
+    ws.send('{"type":"init","board":' + board + ',' + JSON.stringify({
       chatByChannel: Object.fromEntries(chatHistoryByChannel),
       online: wss.clients.size,
+      total: totalPlaced,
       version: 4 // 4 = klan penceresi: baslik/gizli/yasak/kidemli uye/temsil/istatistik
-    }));
+    }).slice(1));
   } catch (err) {
     console.error("Tahta yuklenirken hata:", err);
   }
@@ -789,7 +875,11 @@ wss.on("connection", async (ws, req) => {
       try {
         if (action === "register") {
           if (MODERATORS.has(usernameLower)) { sendAuthError("Bu kullanıcı adı zaten alınmış."); return; }
-          const hash = await bcrypt.hash(password, 10);
+          const nowR = Date.now();
+          while (regLog.length && nowR - regLog[0] > 60000) regLog.shift();
+          if (regLog.length >= 30) { sendAuthError("Sunucu yoğun, biraz sonra tekrar dene."); return; }
+          regLog.push(nowR);
+          const hash = await bcryptLimited(() => bcrypt.hash(password, 10));
           const result = await pool.query(
             `INSERT INTO users (username_lower, username, password_hash)
              VALUES ($1, $2, $3)
@@ -810,6 +900,7 @@ wss.on("connection", async (ws, req) => {
             [usernameLower]
           );
           if (result.rows.length === 0) {
+            try { await bcryptLimited(() => bcrypt.compare(password, DUMMY_HASH)); } catch {}
             sendAuthError("Kullanıcı adı veya şifre hatalı.");
             return;
           }
@@ -819,7 +910,7 @@ wss.on("connection", async (ws, req) => {
             sendAuthError("Çok fazla hatalı deneme. Bu hesap birkaç dakika kilitlendi.");
             return;
           }
-          const ok = await bcrypt.compare(password, row.password_hash);
+          const ok = await bcryptLimited(() => bcrypt.compare(password, row.password_hash));
           if (!ok) {
             const f = failedLogins.get(usernameLower) || { n: 0, ts: Date.now(), until: 0 };
             if (Date.now() - f.ts > 10 * 60 * 1000) { f.n = 0; f.ts = Date.now(); }
@@ -841,6 +932,7 @@ wss.on("connection", async (ws, req) => {
         await sendMyClanInfo(ws, "all");
         await sendClanInvites(ws);
       } catch (err) {
+        if (err && err.message === "busy") { sendAuthError("Sunucu yoğun, birkaç saniye sonra tekrar dene."); return; }
         console.error(`${action} hatasi:`, err);
         sendAuthError("Sunucu hatası, tekrar dene.");
       }
@@ -859,7 +951,7 @@ wss.on("connection", async (ws, req) => {
       const targetLower = targetUsername.toLocaleLowerCase("tr");
       try {
         const userRes = await pool.query(
-          "SELECT username, avatar_data, bio FROM users WHERE username_lower=$1",
+          "SELECT username, avatar_data, bio, pixels_placed FROM users WHERE username_lower=$1",
           [targetLower]
         );
         if (userRes.rows.length === 0) {
@@ -895,6 +987,7 @@ wss.on("connection", async (ws, req) => {
           type: "profile", found: true, username: row.username,
           avatar_data: row.avatar_data, bio: row.bio,
           clans: clanNames, friendStatus,
+          pixels: Number(row.pixels_placed || 0) + (pendingUserPixels.get(targetLower) || 0),
           online: onlineByUsername.has(targetLower)
         }));
       } catch (err) {
@@ -1629,13 +1722,14 @@ wss.on("connection", async (ws, req) => {
         "INSERT INTO pixels (x,y,color) VALUES ($1,$2,$3) ON CONFLICT (x,y) DO UPDATE SET color=$3",
         [x, y, color]
       );
-      if (boardMap) boardMap.set(x * 100000 + y, { x, y, color });
+      if (boardMap) { boardMap.set(x * 100000 + y, { x, y, color }); boardJson = null; }
     } catch (err) {
       console.error("Piksel yazilirken hata:", err);
       return;
     }
 
     if (ws.username) creditClanPixel(ws.username.toLocaleLowerCase("tr"));
+    countPlacement(ws);
     broadcast({ type: "update", x, y, color });
   });
 });
@@ -1644,6 +1738,7 @@ const PORT = process.env.PORT || 3000;
 
 ensureSchema()
   .then(() => loadClanCaches())
+  .then(() => loadTotalPlaced())
   .then(() => {
     server.listen(PORT, () => {
       console.log(`PixelTur V2 backend ${PORT} portunda calisiyor`);
